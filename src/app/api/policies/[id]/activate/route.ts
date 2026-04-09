@@ -3,7 +3,7 @@ import { createAdminSupabase, createServerSupabase } from '@/lib/supabase-server
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> } | { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const resolvedParams = await params
 
