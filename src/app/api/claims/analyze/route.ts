@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminSupabase, createServerSupabase } from '@/lib/supabase-server'
 import { extractReceiptData, generateVerdict, embedText } from '@/lib/gemini'
+import { sendEmail, resubmissionTemplate, verdictTemplate, submissionConfirmationTemplate, adminFlaggedAlertTemplate } from '@/lib/email'
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
 const MAX_SIZE = 10 * 1024 * 1024 // 10MB
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
 
     const { data: profile } = await admin
       .from('profiles')
-      .select('location, seniority, role')
+      .select('location, seniority, role, full_name, email')
       .eq('id', user.id).single()
 
     const formData = await request.formData()
@@ -93,6 +94,13 @@ export async function POST(request: NextRequest) {
 
     // If unreadable → return early without saving
     if (!extracted.is_readable) {
+      if (profile?.email) {
+        await sendEmail({
+          to: profile.email,
+          subject: 'Receipt Resubmission Required - PolicyLens',
+          html: resubmissionTemplate(profile.full_name, new Date().toISOString().split('T')[0], businessPurpose)
+        })
+      }
       return NextResponse.json({
         success: false,
         unreadable: true,
@@ -168,6 +176,39 @@ export async function POST(request: NextRequest) {
       .select().single()
 
     if (claimError) throw claimError
+
+    // Asynchronously send emails (don't block the request)
+    if (profile?.email) {
+      if (verdictData.verdict === 'approved' || verdictData.verdict === 'rejected') {
+        const amt = Number(extracted.amount || 0);
+        sendEmail({
+          to: profile.email,
+          subject: `Expense Claim ${verdictData.verdict.toUpperCase()} - PolicyLens`,
+          html: verdictTemplate(profile.full_name, extracted.merchant ?? 'Unknown', amt, extracted.currency ?? 'USD', verdictData.verdict, verdictData.reason)
+        })
+      } else if (verdictData.verdict === 'flagged') {
+        const amt = Number(extracted.amount || 0);
+        sendEmail({
+          to: profile.email,
+          subject: 'Claim Submitted Successfully - PolicyLens',
+          html: submissionConfirmationTemplate(profile.full_name, extracted.merchant ?? 'Unknown', amt, extracted.currency ?? 'USD')
+        })
+
+        // Alert admins
+        admin.from('profiles').select('email').eq('role', 'admin').then(({ data: admins }) => {
+          if (admins && admins.length > 0) {
+            const adminEmails = admins.map((a: any) => a.email).filter(Boolean)
+            if (adminEmails.length > 0) {
+              sendEmail({
+                to: adminEmails,
+                subject: 'New Claim Flagged for Review - PolicyLens',
+                html: adminFlaggedAlertTemplate(profile.full_name, extracted.merchant ?? 'Unknown', amt, extracted.currency ?? 'USD', verdictData.reason)
+              })
+            }
+          }
+        })
+      }
+    }
 
     return NextResponse.json({
       success: true,
