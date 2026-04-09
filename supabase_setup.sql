@@ -87,8 +87,9 @@ create table claims (
   ai_verdict       text check (ai_verdict in ('approved','flagged','rejected')),
   ai_reason        text,
   policy_reference text,
-  admin_verdict    text check (admin_verdict in ('approved','rejected')),
+  admin_verdict    text, -- null, 'approved', 'rejected'
   admin_note       text,
+  parent_claim_id  uuid references claims(id) on delete set null,
   reviewed_by      uuid references profiles(id),
   status           text check (status in ('pending','approved','flagged','rejected')) default 'pending',
   created_at       timestamptz default now(),
