@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { FileDown, X, Check, Search, Filter } from 'lucide-react'
+import { FileDown, X, Check, Search, Filter, ShieldCheck, SlidersHorizontal } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 
 export default function AdminClaimsPage() {
@@ -155,7 +155,26 @@ export default function AdminClaimsPage() {
               {loading ? (
                 <tr><td colSpan={7} className="px-6 py-8 text-center text-zinc-500">Loading claims...</td></tr>
               ) : claims.length === 0 ? (
-                <tr><td colSpan={7} className="px-6 py-8 text-center text-zinc-500">No {filter !== 'all' ? filter : ''} claims found.</td></tr>
+                <tr>
+                  <td colSpan={8}>
+                    <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+                      <div className="w-14 h-14 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mb-4">
+                        {filter === 'all' ? <ShieldCheck className="w-7 h-7 text-zinc-400" /> : <SlidersHorizontal className="w-7 h-7 text-zinc-400" />}
+                      </div>
+                      <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+                        {filter === 'all' ? 'No claims submitted yet' : `No ${filter} claims`}
+                      </h3>
+                      <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1 max-w-xs">
+                        {filter === 'all' ? 'Once employees start submitting expenses, they will appear here for review.' : `No claims match the "${filter}" filter right now.`}
+                      </p>
+                      {filter !== 'all' && (
+                        <button onClick={() => setFilter('all')} className="mt-4 px-4 py-2 text-sm font-medium border border-zinc-300 rounded-md hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800 transition">
+                          View all claims
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
               ) : (
                 claims.map(claim => (
                   <tr key={claim.id} className={`border-b border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/50 ${claim.requires_review ? 'bg-amber-50/40 dark:bg-amber-900/5' : ''}`}>

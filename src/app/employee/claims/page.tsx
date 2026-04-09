@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { X, AlertCircle } from 'lucide-react'
+import { X, AlertCircle, ClipboardList } from 'lucide-react'
 
 export default function MyClaimsPage() {
   const [claims, setClaims] = useState<any[]>([])
@@ -69,7 +69,23 @@ export default function MyClaimsPage() {
               {loading ? (
                 <tr><td colSpan={7} className="px-6 py-8 text-center text-zinc-500">Loading claims...</td></tr>
               ) : claims.length === 0 ? (
-                <tr><td colSpan={7} className="px-6 py-8 text-center text-zinc-500">No claims found.</td></tr>
+                <tr>
+                  <td colSpan={7}>
+                    <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
+                      <div className="w-16 h-16 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mb-4">
+                        <ClipboardList className="w-8 h-8 text-zinc-400" />
+                      </div>
+                      <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">No claims yet</h3>
+                      <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1 max-w-xs">Submit your first expense receipt to get AI-powered policy review.</p>
+                      <button
+                        onClick={() => router.push('/employee/submit')}
+                        className="mt-5 px-5 py-2.5 bg-zinc-900 text-white text-sm font-medium rounded-lg hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200 transition"
+                      >
+                        Submit a Claim →
+                      </button>
+                    </div>
+                  </td>
+                </tr>
               ) : (
                 claims.map(claim => (
                   <tr 
