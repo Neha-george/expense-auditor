@@ -50,7 +50,7 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleLogin} className="space-y-4" suppressHydrationWarning>
           <div className="space-y-2">
             <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70" htmlFor="email">
               Email
@@ -63,6 +63,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              suppressHydrationWarning
             />
           </div>
           
@@ -77,6 +78,7 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              suppressHydrationWarning
             />
           </div>
 
@@ -84,6 +86,7 @@ export default function LoginPage() {
             type="submit"
             disabled={loading}
             className="inline-flex h-10 w-full items-center justify-center rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-50 shadow hover:bg-zinc-900/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 disabled:pointer-events-none disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-50/90 dark:focus-visible:ring-zinc-300"
+            suppressHydrationWarning
           >
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Sign In
