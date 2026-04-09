@@ -19,6 +19,7 @@ export default function Sidebar({ role }: { role: 'employee' | 'admin' }) {
     { href: '/employee/assistant', label: 'Policy Assistant', icon: MessageSquare },
   ]
 
+  const adminLinks = [
     { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/admin/claims', label: 'Claims Queue', icon: Database },
     { href: '/admin/policies', label: 'Policy Hub', icon: Scale },

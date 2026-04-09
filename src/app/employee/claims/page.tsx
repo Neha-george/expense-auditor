@@ -169,6 +169,7 @@ export default function MyClaimsPage() {
                   </div>
                 </div>
 
+                {selectedClaim.admin_verdict && (
                   <div>
                     <h3 className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-2">Admin Override</h3>
                     <div className="p-4 rounded-md border bg-zinc-50 dark:bg-zinc-900 dark:border-zinc-800">
