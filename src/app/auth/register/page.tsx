@@ -94,21 +94,21 @@ function RegisterForm() {
           </p>
         </div>
 
-        <form onSubmit={handleRegister} className="space-y-4">
+        <form onSubmit={handleRegister} className="space-y-4" suppressHydrationWarning>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium leading-none" htmlFor="fullName">Full Name</label>
-              <input id="fullName" className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 dark:border-zinc-800 dark:bg-zinc-950 dark:focus-visible:ring-zinc-300" required value={formData.fullName} onChange={handleChange} />
+              <input id="fullName" className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 dark:border-zinc-800 dark:bg-zinc-950 dark:focus-visible:ring-zinc-300" required value={formData.fullName} onChange={handleChange} suppressHydrationWarning />
             </div>
             
             <div className="space-y-2">
               <label className="text-sm font-medium leading-none" htmlFor="email">Email</label>
-              <input id="email" type="email" className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 dark:border-zinc-800 dark:bg-zinc-950 dark:focus-visible:ring-zinc-300" required value={formData.email} onChange={handleChange} />
+              <input id="email" type="email" className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 dark:border-zinc-800 dark:bg-zinc-950 dark:focus-visible:ring-zinc-300" required value={formData.email} onChange={handleChange} suppressHydrationWarning />
             </div>
 
             <div className="space-y-2">
               <label className="text-sm font-medium leading-none" htmlFor="password">Password</label>
-              <input id="password" type="password" minLength={8} className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 dark:border-zinc-800 dark:bg-zinc-950 dark:focus-visible:ring-zinc-300" required value={formData.password} onChange={handleChange} />
+              <input id="password" type="password" minLength={8} className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 dark:border-zinc-800 dark:bg-zinc-950 dark:focus-visible:ring-zinc-300" required value={formData.password} onChange={handleChange} suppressHydrationWarning />
             </div>
 
             <div className="space-y-2">
@@ -144,7 +144,7 @@ function RegisterForm() {
 
         <div className="text-center text-sm">
           <span className="text-zinc-500 dark:text-zinc-400">Already have an account? </span>
-          <Link href="/login" className="font-medium hover:underline hover:text-blue-600 transition-colors">
+          <Link href="/auth/login" className="font-medium hover:underline hover:text-blue-600 transition-colors">
             Sign In
           </Link>
         </div>
