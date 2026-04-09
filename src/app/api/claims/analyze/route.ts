@@ -156,6 +156,13 @@ export async function POST(request: NextRequest) {
     const policyChunks: string[] = chunks?.map((c: any) => c.content) ?? []
 
     // ── Step 4: Generate verdict ──────────────────────────────
+    const location = parseLocation(profile?.location)
+    const roleDepartment = profile?.department || 'unknown'
+    const roleSeniority = profile?.seniority || 'mid'
+    const roleCategory = manualCategory || extracted.category || 'other'
+    const locationCountry = location.country || 'Unknown'
+    const locationCity = location.city || 'Unknown'
+
     let verdictData: {
       verdict: string
       reason: string
@@ -184,13 +191,6 @@ export async function POST(request: NextRequest) {
       const startOfMonth = new Date()
       startOfMonth.setDate(1)
       startOfMonth.setHours(0,0,0,0)
-
-      const location = parseLocation(profile?.location)
-      const roleDepartment = profile?.department || 'unknown'
-      const roleSeniority = profile?.seniority || 'mid'
-      const roleCategory = manualCategory || extracted.category || 'other'
-      const locationCountry = location.country || 'Unknown'
-      const locationCity = location.city || 'Unknown'
 
       const [{ data: limitConfig }, { data: monthClaims }, { data: orgConfig }, { data: baselineRows }] = await Promise.all([
         supabase
