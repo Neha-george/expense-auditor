@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminSupabase, createServerSupabase } from '@/lib/supabase-server'
 import { embedBatch } from '@/lib/gemini'
-// @ts-ignore
-import pdf from 'pdf-parse/lib/pdf-parse.js'
+const pdf = require('pdf-parse')
 
 // Chunk text into ~400-token pieces with 50-token overlap
 function chunkText(text: string, chunkSize = 1600, overlap = 200): string[] {
