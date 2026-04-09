@@ -1,12 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { X } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { X, AlertCircle } from 'lucide-react'
 
 export default function MyClaimsPage() {
   const [claims, setClaims] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedClaim, setSelectedClaim] = useState<any>(null)
+  const router = useRouter()
 
   useEffect(() => {
     fetch('/api/claims')
@@ -167,7 +169,6 @@ export default function MyClaimsPage() {
                   </div>
                 </div>
 
-                {selectedClaim.admin_verdict && (
                   <div>
                     <h3 className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-2">Admin Override</h3>
                     <div className="p-4 rounded-md border bg-zinc-50 dark:bg-zinc-900 dark:border-zinc-800">
@@ -176,10 +177,32 @@ export default function MyClaimsPage() {
                     </div>
                   </div>
                 )}
+
+                {(selectedClaim.ai_verdict === 'flagged' || selectedClaim.ai_verdict === 'rejected' || selectedClaim.admin_verdict === 'rejected') && (
+                  <div className="mt-4 p-4 rounded-lg bg-blue-50 border border-blue-200 dark:bg-blue-900/10 dark:border-blue-900/30">
+                     <h3 className="text-sm font-semibold text-blue-800 dark:text-blue-300 flex items-center gap-2">
+                       <AlertCircle className="w-4 h-4" /> Checklist for Resubmission
+                     </h3>
+                     <p className="text-sm text-blue-700 dark:text-blue-400 mt-2">Before resubmitting, ensure you fix the following issue:</p>
+                     <ul className="list-disc pl-5 mt-2 text-sm text-blue-800 dark:text-blue-300 font-medium">
+                        <li>{selectedClaim.admin_note || selectedClaim.ai_reason}</li>
+                     </ul>
+                  </div>
+                )}
               </div>
             </div>
             
-            <div className="border-t border-zinc-200 p-4 flex justify-end dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/50">
+            <div className="border-t border-zinc-200 p-4 flex justify-between items-center dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/50">
+               <div>
+                  {(selectedClaim.ai_verdict === 'flagged' || selectedClaim.ai_verdict === 'rejected' || selectedClaim.admin_verdict === 'rejected') && (
+                    <button 
+                      onClick={() => router.push(`/employee/submit?resubmit=${selectedClaim.id}`)}
+                      className="px-4 py-2 bg-zinc-900 text-white rounded-md text-sm font-medium hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+                    >
+                      Resubmit Correction
+                    </button>
+                  )}
+               </div>
                <button onClick={() => setSelectedClaim(null)} className="px-4 py-2 border border-zinc-300 rounded-md bg-white hover:bg-zinc-50 text-sm font-medium dark:bg-zinc-900 dark:border-zinc-700 dark:hover:bg-zinc-800">
                  Close
                </button>
