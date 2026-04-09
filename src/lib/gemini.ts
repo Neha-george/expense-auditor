@@ -42,6 +42,7 @@ export async function generateVerdict(params: {
   employeeLocation: string
   employeeSeniority: string
   policyChunks: string[]
+  structuredLimit?: { limit: number; currency: string; currentSpend: number } | null
 }) {
   const policyContext = params.policyChunks
     .map((chunk, i) => `[Policy clause ${i + 1}]: ${chunk}`)
@@ -63,7 +64,17 @@ RECEIPT DATA:
 RELEVANT POLICY CLAUSES:
 ${policyContext}
 
-Based on the policy clauses above and the employee's profile, determine if this expense is compliant.
+${params.structuredLimit ? `
+HARD SPEND LIMIT CONSTRAINT:
+This employee has a strict monthly limit of ${params.structuredLimit.limit} ${params.structuredLimit.currency} for the category "${params.category}".
+Their current approved and pending spend this month is ${params.structuredLimit.currentSpend} ${params.structuredLimit.currency}.
+Available budget remaining: ${params.structuredLimit.limit - params.structuredLimit.currentSpend} ${params.structuredLimit.currency}.
+
+If the receipt currency (${params.currency}) is different from the limit currency (${params.structuredLimit.currency}), you MUST approximate the conversion to ${params.structuredLimit.currency} using current market rates.
+If the expense amount (after any required currency conversion) exceeds the available budget remaining, the verdict MUST be "flagged" regardless of the policy clauses.
+` : ''}
+
+Based on the policy clauses, the optional hard spend limits above, and the employee's profile, determine if this expense is compliant.
 
 Return ONLY a valid JSON object:
 {

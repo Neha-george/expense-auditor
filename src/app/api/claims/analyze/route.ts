@@ -128,6 +128,34 @@ export async function POST(request: NextRequest) {
     }
 
     if (policyChunks.length > 0) {
+      const startOfMonth = new Date()
+      startOfMonth.setDate(1)
+      startOfMonth.setHours(0,0,0,0)
+
+      const [{ data: limitConfig }, { data: monthClaims }] = await Promise.all([
+        supabase
+          .from('spend_limits')
+          .select('monthly_limit, currency')
+          .eq('seniority', profile?.seniority ?? 'mid')
+          .eq('category', extracted.category ?? 'other')
+          .single(),
+        supabase
+          .from('claims')
+          .select('amount')
+          .eq('employee_id', user.id)
+          .eq('category', extracted.category ?? 'other')
+          .in('status', ['approved', 'pending'])
+          .gte('created_at', startOfMonth.toISOString())
+      ])
+
+      const currentMonthlySpend = monthClaims?.reduce((sum, c) => sum + Number(c.amount || 0), 0) ?? 0
+
+      const structuredLimit = limitConfig ? {
+        limit: limitConfig.monthly_limit,
+        currency: limitConfig.currency,
+        currentSpend: currentMonthlySpend,
+      } : null
+
       const args = {
         merchant: extracted.merchant ?? 'Unknown',
         amount: extracted.amount ?? 0,
@@ -138,6 +166,7 @@ export async function POST(request: NextRequest) {
         employeeLocation: profile?.location ?? 'Unknown',
         employeeSeniority: profile?.seniority ?? 'mid',
         policyChunks,
+        structuredLimit
       }
       try {
         verdictData = await generateVerdict(args)

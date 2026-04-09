@@ -288,6 +288,110 @@ values (
 );
 
 -- ============================================================
+-- 13. SPEND LIMITS
+-- ============================================================
+create table spend_limits (
+  id              uuid primary key default gen_random_uuid(),
+  organisation_id uuid references organisations(id) on delete cascade not null,
+  seniority       text not null,
+  category        text not null,
+  monthly_limit   numeric(10,2) not null default 0,
+  currency        text default 'USD',
+  created_at      timestamptz default now(),
+  updated_at      timestamptz default now(),
+  unique(organisation_id, seniority, category)
+);
+
+alter table spend_limits enable row level security;
+
+create policy "admins manage spend limits"
+  on spend_limits for all
+  using (
+    organisation_id = auth_user_org_id()
+    and exists (select 1 from profiles where id = auth.uid() and role = 'admin')
+  );
+
+create policy "members view spend limits"
+  on spend_limits for select
+  using (organisation_id = auth_user_org_id());
+
+-- ============================================================
+-- 14. AUDIT LOGS
+-- ============================================================
+create table audit_logs (
+  id              uuid primary key default gen_random_uuid(),
+  organisation_id uuid references organisations(id) on delete cascade not null,
+  actor_id        uuid references profiles(id) on delete set null,
+  action          text not null,
+  entity_type     text not null,
+  entity_id       uuid not null,
+  metadata        jsonb,
+  ip_address      text,
+  user_agent      text,
+  created_at      timestamptz default now()
+);
+
+alter table audit_logs enable row level security;
+
+create policy "admins see audit logs"
+  on audit_logs for select
+  using (
+    organisation_id = auth_user_org_id()
+    and exists (select 1 from profiles where id = auth.uid() and role = 'admin')
+  );
+
+-- Deny updates/deletes securely
+create policy "deny update audit logs" on audit_logs for update using (false);
+create policy "deny delete audit logs" on audit_logs for delete using (false);
+
+-- Trigger for claims logging
+create or replace function log_claim_update()
+returns trigger as $$
+declare
+  client_ip text;
+  client_ua text;
+begin
+  if (old.status is distinct from new.status) or
+     (old.amount is distinct from new.amount) or
+     (old.category is distinct from new.category) or
+     (old.admin_verdict is distinct from new.admin_verdict) then
+    
+    begin
+      client_ip := current_setting('request.headers', true)::json->>'x-forwarded-for';
+      client_ua := current_setting('request.headers', true)::json->>'user-agent';
+    exception when others then
+      -- Fallback if not evaluated in API context.
+      client_ip := '127.0.0.1';
+      client_ua := 'Unknown';
+    end;
+    
+    insert into audit_logs (
+      organisation_id, actor_id, action, entity_type, entity_id, metadata, ip_address, user_agent
+    ) values (
+      new.organisation_id,
+      auth.uid(),
+      'claim_updated',
+      'claim',
+      new.id,
+      jsonb_build_object(
+        'old_status', old.status, 'new_status', new.status, 
+        'old_amount', old.amount, 'new_amount', new.amount,
+        'old_category', old.category, 'new_category', new.category,
+        'admin_verdict', new.admin_verdict
+      ),
+      coalesce(client_ip, '127.0.0.1'),
+      client_ua
+    );
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+create trigger trigger_log_claim_update
+  after update on claims
+  for each row execute function log_claim_update();
+
+-- ============================================================
 -- Done. Next steps:
 --   1. Run this SQL in Supabase SQL Editor (fresh schema).
 --   2. Register as admin for Global Corp → /onboarding.
