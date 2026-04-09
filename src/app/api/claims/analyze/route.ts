@@ -192,7 +192,16 @@ export async function POST(request: NextRequest) {
       startOfMonth.setDate(1)
       startOfMonth.setHours(0,0,0,0)
 
-      const [{ data: limitConfig }, { data: monthClaims }, { data: orgConfig }, { data: baselineRows }] = await Promise.all([
+      const claimAmount = Number(manualAmount) || extracted.amount || 0
+      const claimMerchant = manualMerchant || extracted.merchant || ''
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+
+      let currentRange = '0-50'
+      if (claimAmount >= 50 && claimAmount < 200) currentRange = '50-200'
+      else if (claimAmount >= 200 && claimAmount < 1000) currentRange = '200-1000'
+      else if (claimAmount >= 1000) currentRange = '1000+'
+
+      const [{ data: limitConfig }, { data: monthClaims }, { data: orgConfig }, { data: baselineRows }, { data: recentFeedback }] = await Promise.all([
         supabase
           .from('spend_limits')
           .select('monthly_limit, currency')
@@ -206,13 +215,11 @@ export async function POST(request: NextRequest) {
           .eq('category', roleCategory)
           .in('status', ['approved', 'pending'])
           .gte('created_at', startOfMonth.toISOString()),
-        // Fetch auto_approve_threshold from org config
         supabase
           .from('organisations')
           .select('auto_approve_threshold')
           .eq('id', orgId)
           .single(),
-        // Build a location-aware baseline for this profile cohort.
         supabase
           .from('claims')
           .select('amount')
@@ -225,13 +232,17 @@ export async function POST(request: NextRequest) {
           .eq('location_city', locationCity)
           .not('amount', 'is', null)
           .gte('created_at', new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString())
-          .limit(500)
+          .limit(500),
+        supabase
+          .from('verdict_feedback')
+          .select('category, amount_range, original_ai_verdict, admin_verdict, admin_reason')
+          .eq('organisation_id', orgId)
+          .eq('category', roleCategory)
+          .order('created_at', { ascending: false })
+          .limit(30)
       ])
 
       // ── Duplicate Detection (30-day pre-inference check) ─────
-      const claimAmount = Number(manualAmount) || extracted.amount || 0
-      const claimMerchant = manualMerchant || extracted.merchant || ''
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
       const { data: duplicateClaims } = await supabase
         .from('claims')
         .select('id, created_at, amount')
@@ -286,6 +297,15 @@ export async function POST(request: NextRequest) {
         currentSpend: currentMonthlySpend,
       } : null
 
+      let sortedFeedback: any[] = []
+      if (recentFeedback && recentFeedback.length > 0) {
+        sortedFeedback = [...recentFeedback].sort((a, b) => {
+          if (a.amount_range === currentRange && b.amount_range !== currentRange) return -1
+          if (a.amount_range !== currentRange && b.amount_range === currentRange) return 1
+          return 0
+        }).slice(0, 10)
+      }
+
       const args = {
         merchant: manualMerchant || extracted.merchant || 'Unknown',
         amount: Number(manualAmount) || extracted.amount || 0,
@@ -297,6 +317,7 @@ export async function POST(request: NextRequest) {
         employeeSeniority: roleSeniority,
         policyChunks,
         structuredLimit,
+        overrideFeedback: sortedFeedback.length > 0 ? sortedFeedback : null,
         statisticalBaseline: baselineAmounts.length >= 5 ? {
           department: roleDepartment,
           locationCity,

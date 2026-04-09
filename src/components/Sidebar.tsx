@@ -27,6 +27,7 @@ export default function Sidebar({ role }: { role: 'employee' | 'admin' }) {
     { href: '/admin/claims', label: 'Claims Queue', icon: Database },
     { href: '/admin/policies', label: 'Policy Hub', icon: Scale },
     { href: '/admin/spend-limits', label: 'Spend Limits', icon: Settings },
+    { href: '/admin/exports', label: 'Accounting Exports', icon: UploadCloud },
     { href: '/admin/csv', label: 'Bulk Import', icon: UploadCloud },
   ]
 

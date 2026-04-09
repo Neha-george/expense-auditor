@@ -456,6 +456,59 @@ alter publication supabase_realtime add table claims;
 create index idx_claims_fraud_check on claims (employee_id, merchant, amount, created_at);
 
 -- ============================================================
+-- 15. VERDICT FEEDBACK (AI LEARNING)
+-- ============================================================
+create table verdict_feedback (
+  id                 uuid primary key default gen_random_uuid(),
+  organisation_id    uuid references organisations(id) on delete cascade not null,
+  claim_id           uuid references claims(id) on delete cascade not null,
+  category           text not null,
+  amount_range       text not null,  -- e.g. '0-50', '50-200', '200+'
+  original_ai_verdict text not null,
+  admin_verdict      text not null,
+  admin_reason       text,
+  created_at         timestamptz default now()
+);
+
+alter table verdict_feedback enable row level security;
+
+create policy "admins manage verdict_feedback"
+  on verdict_feedback for all
+  using (
+    organisation_id = auth_user_org_id()
+    and exists (select 1 from profiles where id = auth.uid() and role = 'admin')
+  );
+
+create index idx_verdict_feedback_lookup on verdict_feedback (organisation_id, category, amount_range, created_at desc);
+
+-- ============================================================
+-- 16. GL ACCOUNT MAPPINGS (ERP EXPORTS)
+-- ============================================================
+create table gl_account_mappings (
+  id              uuid primary key default gen_random_uuid(),
+  organisation_id uuid references organisations(id) on delete cascade not null,
+  category        text not null,
+  gl_code         text not null,
+  gl_description  text,
+  created_at      timestamptz default now(),
+  updated_at      timestamptz default now(),
+  unique(organisation_id, category)
+);
+
+alter table gl_account_mappings enable row level security;
+
+create policy "admins manage gl mappings"
+  on gl_account_mappings for all
+  using (
+    organisation_id = auth_user_org_id()
+    and exists (select 1 from profiles where id = auth.uid() and role = 'admin')
+  );
+
+create policy "members view gl mappings"
+  on gl_account_mappings for select
+  using (organisation_id = auth_user_org_id());
+
+-- ============================================================
 -- Done. Next steps:
 --   1. Run this SQL in Supabase SQL Editor (fresh schema).
 --   2. Register as admin for Global Corp → /onboarding.

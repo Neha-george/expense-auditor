@@ -44,6 +44,7 @@ export async function generateVerdict(params: {
   policyChunks: string[]
   structuredLimit?: { limit: number; currency: string; currentSpend: number } | null
   previousRejectionContext?: string | null
+  overrideFeedback?: Array<{ category: string, amount_range: string, original_ai_verdict: string, admin_verdict: string, admin_reason: string }> | null
   statisticalBaseline?: {
     department?: string | null
     locationCity?: string | null
@@ -73,6 +74,14 @@ RECEIPT DATA:
 
 RELEVANT POLICY CLAUSES:
 ${policyContext}
+
+${params.overrideFeedback && params.overrideFeedback.length > 0 ? `
+ORGANISATION-SPECIFIC OVERRIDE HISTORY:
+For context, your admin previously made the following manual overrides on your decisions for the same category:
+${params.overrideFeedback.map((fb, idx) => `- ${idx+1}: You returned "${fb.original_ai_verdict}" for an amount in range ${fb.amount_range}, but admin OVERRODE to "${fb.admin_verdict}". Reason: "${fb.admin_reason}"`).join('\n')}
+
+Use these examples to calibrate your verdict to match this organisation's interpretation.
+` : ''}
 
 ${params.statisticalBaseline ? `
 STATISTICAL RISK CONTEXT:

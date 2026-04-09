@@ -60,6 +60,13 @@ export default function AdminClaimsPage() {
 
   const handleAction = async (verdict: 'approved' | 'rejected') => {
     if (!selectedClaim) return
+
+    const isOverride = selectedClaim.ai_verdict && selectedClaim.ai_verdict !== verdict
+    if (isOverride && !adminNote.trim()) {
+      toast.error('An override reason is required since your verdict differs from the AI verdict.')
+      return
+    }
+
     setActionLoading(true)
     
     try {
@@ -324,14 +331,21 @@ export default function AdminClaimsPage() {
               
               <div className="space-y-3 pt-4 border-t border-zinc-200 dark:border-zinc-800">
                  <h3 className="text-sm font-semibold">Admin Override</h3>
-                 <label className="text-xs text-zinc-500">Optional Review Note</label>
-                 <textarea
-                   disabled={actionLoading}
-                   value={adminNote}
-                   onChange={e => setAdminNote(e.target.value)}
-                   placeholder="E.g. Approved as exception for Q3 travel"
-                   className="w-full rounded-md border border-zinc-200 p-3 text-sm focus:ring-2 focus:ring-zinc-950 dark:bg-zinc-950 dark:border-zinc-800 dark:focus:ring-zinc-300 min-h-[100px]"
-                 />
+                 <div>
+                   <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                     Review Note <span className="text-zinc-400 font-normal">(Required if changing AI verdict)</span>
+                   </label>
+                   <p className="text-[10px] text-zinc-500 mt-0.5 mb-2 leading-tight max-w-sm">
+                     If your verdict overrides the AI's decision, this note is permanently saved and used to train future decisions for your organisation.
+                   </p>
+                   <textarea
+                     disabled={actionLoading}
+                     value={adminNote}
+                     onChange={e => setAdminNote(e.target.value)}
+                     placeholder="E.g. Approved as exception for Q3 travel"
+                     className="w-full rounded-md border border-zinc-200 p-3 text-sm focus:ring-2 focus:ring-zinc-950 dark:bg-zinc-950 dark:border-zinc-800 dark:focus:ring-zinc-300 min-h-[100px]"
+                   />
+                 </div>
               </div>
 
             </div>

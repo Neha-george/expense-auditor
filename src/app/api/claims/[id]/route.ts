@@ -32,6 +32,21 @@ export async function PATCH(
     if (!['approved', 'rejected'].includes(verdict))
       return NextResponse.json({ error: 'verdict must be approved or rejected' }, { status: 400 })
 
+    const { data: currentClaim } = await supabase
+      .from('claims')
+      .select('ai_verdict, amount, category')
+      .eq('id', resolvedParams.id)
+      .eq('organisation_id', orgId)
+      .single()
+
+    if (!currentClaim) return NextResponse.json({ error: 'Claim not found' }, { status: 404 })
+
+    const isOverride = currentClaim.ai_verdict && currentClaim.ai_verdict !== verdict
+
+    if (isOverride && (!note || !note.trim())) {
+      return NextResponse.json({ error: 'Admin override reason is required when changing AI verdict.' }, { status: 400 })
+    }
+
     // Update is scoped to both the claim id AND the org — prevents cross-tenant writes
     const { data, error } = await admin
       .from('claims')
@@ -45,6 +60,26 @@ export async function PATCH(
       .eq('organisation_id', orgId)        // ← org-scoped write guard
       .select('*, profiles!claims_employee_id_fkey(full_name, email)')
       .single()
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    if (isOverride) {
+      const amt = Number(currentClaim.amount || 0)
+      let range = '0-50'
+      if (amt >= 50 && amt < 200) range = '50-200'
+      else if (amt >= 200 && amt < 1000) range = '200-1000'
+      else if (amt >= 1000) range = '1000+'
+
+      await admin.from('verdict_feedback').insert({
+        organisation_id: orgId,
+        claim_id: data.id,
+        category: currentClaim.category,
+        amount_range: range,
+        original_ai_verdict: currentClaim.ai_verdict,
+        admin_verdict: verdict,
+        admin_reason: note
+      })
+    }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
