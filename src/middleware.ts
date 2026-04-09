@@ -24,13 +24,13 @@ export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname
 
   // ── Public / static paths — always allow ──────────────────
-  const publicPaths = ['/login', '/auth/register', '/onboarding/request-access']
+  const publicPaths = ['/auth/login', '/auth/register', '/onboarding/request-access']
   const isPublic = publicPaths.some(p => path.startsWith(p))
   if (isPublic) return supabaseResponse
 
   // ── RULE 1: Must be authenticated ─────────────────────────
   if (!user) {
-    return NextResponse.redirect(new URL('/login', request.url))
+    return NextResponse.redirect(new URL('/auth/login', request.url))
   }
 
   // Fetch profile once — all subsequent guards need it
