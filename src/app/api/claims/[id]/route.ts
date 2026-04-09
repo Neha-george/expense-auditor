@@ -4,7 +4,7 @@ import { sendEmail, verdictTemplate } from '@/lib/email'
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> } | { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const resolvedParams = await params
@@ -80,8 +80,6 @@ export async function PATCH(
         admin_reason: note
       })
     }
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     if (data && data.profiles && (data.profiles as any).email) {
       const p = data.profiles as any
