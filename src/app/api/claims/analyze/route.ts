@@ -127,10 +127,15 @@ export async function POST(request: NextRequest) {
     const policyChunks: string[] = chunks?.map((c: any) => c.content) ?? []
 
     // ── Step 4: Generate verdict ──────────────────────────────
-    let verdictData = {
+    let verdictData: {
+      verdict: string
+      reason: string
+      policy_reference: string | null
+      confidence?: number
+    } = {
       verdict: 'flagged',
       reason: 'No active policy found for your organisation. Flagged for manual review.',
-      policy_reference: null as string | null,
+      policy_reference: null,
     }
 
     let previousRejectionContext = null
@@ -151,7 +156,7 @@ export async function POST(request: NextRequest) {
       startOfMonth.setDate(1)
       startOfMonth.setHours(0,0,0,0)
 
-      const [{ data: limitConfig }, { data: monthClaims }] = await Promise.all([
+      const [{ data: limitConfig }, { data: monthClaims }, { data: orgConfig }] = await Promise.all([
         supabase
           .from('spend_limits')
           .select('monthly_limit, currency')
@@ -164,8 +169,34 @@ export async function POST(request: NextRequest) {
           .eq('employee_id', user.id)
           .eq('category', manualCategory || extracted.category || 'other')
           .in('status', ['approved', 'pending'])
-          .gte('created_at', startOfMonth.toISOString())
+          .gte('created_at', startOfMonth.toISOString()),
+        // Fetch auto_approve_threshold from org config
+        supabase
+          .from('organisations')
+          .select('auto_approve_threshold')
+          .eq('id', orgId)
+          .single()
       ])
+
+      // ── Duplicate Detection (30-day pre-inference check) ─────
+      const claimAmount = Number(manualAmount) || extracted.amount || 0
+      const claimMerchant = manualMerchant || extracted.merchant || ''
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+      const { data: duplicateClaims } = await supabase
+        .from('claims')
+        .select('id, created_at, amount')
+        .eq('employee_id', user.id)
+        .ilike('merchant', `%${claimMerchant}%`)
+        .gte('created_at', thirtyDaysAgo)
+        .limit(5)
+
+      const isDuplicate = duplicateClaims?.some(
+        (c) => Math.abs(Number(c.amount) - claimAmount) < 5
+      ) ?? false
+
+      const duplicateDate = isDuplicate
+        ? duplicateClaims?.find(c => Math.abs(Number(c.amount) - claimAmount) < 5)?.created_at
+        : null
 
       const currentMonthlySpend = monthClaims?.reduce((sum, c) => sum + Number(c.amount || 0), 0) ?? 0
 
@@ -186,7 +217,11 @@ export async function POST(request: NextRequest) {
         employeeSeniority: profile?.seniority || 'mid',
         policyChunks,
         structuredLimit,
-        previousRejectionContext
+        previousRejectionContext: previousRejectionContext
+          ? `${previousRejectionContext}${isDuplicate ? ` Additionally, a potential duplicate was detected from ${new Date(duplicateDate!).toLocaleDateString()}.` : ''}`
+          : isDuplicate
+          ? `NOTE: This employee submitted a similar claim for the same merchant (${claimMerchant}) on ${new Date(duplicateDate!).toLocaleDateString()}. Evaluate whether the business purpose justifies a second purchase. Flag as potential duplicate if insufficient justification.`
+          : null
       }
       try {
         verdictData = await generateVerdict(args)
@@ -194,10 +229,20 @@ export async function POST(request: NextRequest) {
         try {
           verdictData = await generateVerdict(args)
         } catch {
-          verdictData = { verdict: 'flagged', reason: 'AI response parsing failed — flagged for manual review.', policy_reference: null }
+          verdictData = { verdict: 'flagged', reason: 'AI response parsing failed — flagged for manual review.', policy_reference: null, confidence: 0.5 }
         }
       }
-    }
+
+      // ── Compute requires_review ───────────────────────────────
+      const confidence = (verdictData as any).confidence ?? 0.5
+      const autoApproveThreshold = orgConfig?.auto_approve_threshold ?? 1000
+      const requiresReview = confidence < 0.7 || claimAmount > autoApproveThreshold
+
+      // Attach computed values for use in the insert below
+      ;(verdictData as any)._confidence = confidence
+      ;(verdictData as any)._requiresReview = requiresReview
+      ;(verdictData as any)._isDuplicate = isDuplicate
+    } // end if (policyChunks.length > 0)
 
     // ── Step 5: Save claim with organisation_id ───────────────
     const { data: claim, error: claimError } = await admin
@@ -217,6 +262,9 @@ export async function POST(request: NextRequest) {
         ai_reason: verdictData.reason,
         policy_reference: verdictData.policy_reference,
         status: verdictData.verdict === 'approved' ? 'approved' : verdictData.verdict,
+        confidence: (verdictData as any)._confidence ?? null,
+        requires_review: (verdictData as any)._requiresReview ?? false,
+        is_duplicate_warning: (verdictData as any)._isDuplicate ?? false,
       })
       .select().single()
 

@@ -33,7 +33,13 @@ export default function AdminClaimsPage() {
       const res = await fetch(`/api/claims?status=${status}`)
       const data = await res.json()
       if (res.ok) {
-        setClaims(data.claims || [])
+        // Sort: requires_review=true floats to top
+        const sorted = (data.claims || []).sort((a: any, b: any) => {
+          if (a.requires_review && !b.requires_review) return -1
+          if (!a.requires_review && b.requires_review) return 1
+          return 0
+        })
+        setClaims(sorted)
       } else {
         toast.error(data.error || 'Failed to fetch claims')
       }
@@ -88,6 +94,13 @@ export default function AdminClaimsPage() {
     }
   }
 
+  const getConfidenceMeter = (confidence: number | null) => {
+    if (confidence === null || confidence === undefined) return null
+    if (confidence > 0.9) return { label: `${Math.round(confidence * 100)}%`, color: 'text-green-600 dark:text-green-400', bar: 'bg-green-500' }
+    if (confidence >= 0.7) return { label: `${Math.round(confidence * 100)}%`, color: 'text-amber-600 dark:text-amber-400', bar: 'bg-amber-500' }
+    return { label: `${Math.round(confidence * 100)}%`, color: 'text-red-600 dark:text-red-400', bar: 'bg-red-500' }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -133,6 +146,7 @@ export default function AdminClaimsPage() {
                 <th className="px-6 py-3">Merchant</th>
                 <th className="px-6 py-3">Amount</th>
                 <th className="px-6 py-3">AI Verdict</th>
+                <th className="px-6 py-3">Confidence</th>
                 <th className="px-6 py-3">Status</th>
                 <th className="px-6 py-3 text-right">Action</th>
               </tr>
@@ -144,18 +158,40 @@ export default function AdminClaimsPage() {
                 <tr><td colSpan={7} className="px-6 py-8 text-center text-zinc-500">No {filter !== 'all' ? filter : ''} claims found.</td></tr>
               ) : (
                 claims.map(claim => (
-                  <tr key={claim.id} className="border-b border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/50">
+                  <tr key={claim.id} className={`border-b border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/50 ${claim.requires_review ? 'bg-amber-50/40 dark:bg-amber-900/5' : ''}`}>
                     <td className="px-6 py-4">
                       <div className="font-medium text-zinc-900 dark:text-zinc-100">{claim.profiles?.full_name || 'Unknown'}</div>
                       <div className="text-xs text-zinc-500">{claim.profiles?.department || 'No dept'}</div>
+                      {claim.requires_review && (
+                        <span className="inline-block mt-1 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded">⚑ Review Required</span>
+                      )}
                     </td>
                     <td className="px-6 py-4">{new Date(claim.receipt_date).toLocaleDateString()}</td>
-                    <td className="px-6 py-4 font-medium">{claim.merchant}</td>
+                    <td className="px-6 py-4 font-medium">
+                      <div>{claim.merchant}</div>
+                      {claim.is_duplicate_warning && (
+                        <span className="inline-block mt-1 text-[10px] font-bold uppercase tracking-wider text-red-700 dark:text-red-400 bg-red-100 dark:bg-red-900/30 px-1.5 py-0.5 rounded">⚠ Potential Duplicate</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4">${Number(claim.amount).toFixed(2)}</td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${getStatusColor(claim.ai_verdict)}`}>
                         {claim.ai_verdict || 'None'}
                       </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      {(() => {
+                        const m = getConfidenceMeter(claim.confidence)
+                        if (!m) return <span className="text-xs text-zinc-400">—</span>
+                        return (
+                          <div className="flex items-center gap-2">
+                            <div className="w-16 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
+                              <div className={`h-full ${m.bar} rounded-full`} style={{ width: m.label }} />
+                            </div>
+                            <span className={`text-xs font-semibold ${m.color}`}>{m.label}</span>
+                          </div>
+                        )
+                      })()}
                     </td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${getStatusColor(claim.status)}`}>
