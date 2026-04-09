@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useEffect, useState } from 'react'
-import { LogOut, FileText, CheckCircle, MessageSquare, LayoutDashboard, Database, Scale } from 'lucide-react'
+import { LogOut, FileText, CheckCircle, MessageSquare, LayoutDashboard, Database, Scale, Settings } from 'lucide-react'
 
 export default function Sidebar({ role }: { role: 'employee' | 'admin' }) {
   const pathname = usePathname()
@@ -18,10 +18,10 @@ export default function Sidebar({ role }: { role: 'employee' | 'admin' }) {
     { href: '/employee/assistant', label: 'Policy Assistant', icon: MessageSquare },
   ]
 
-  const adminLinks = [
     { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/admin/claims', label: 'Claims Queue', icon: Database },
     { href: '/admin/policies', label: 'Policy Hub', icon: Scale },
+    { href: '/admin/spend-limits', label: 'Spend Limits', icon: Settings },
   ]
 
   const links = role === 'admin' ? adminLinks : employeeLinks
