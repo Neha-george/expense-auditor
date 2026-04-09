@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminSupabase, createServerSupabase } from '@/lib/supabase-server'
-import { embedBatch } from '@/lib/gemini'
+import { embedBatch, generatePolicyHealthReport } from '@/lib/gemini'
 
 // Chunk text into ~400-token pieces with 50-token overlap
 function chunkText(text: string, chunkSize = 1600, overlap = 200): string[] {
@@ -61,6 +61,21 @@ export async function POST(request: NextRequest) {
       .upload(fileName, buffer, { contentType: 'application/pdf' })
     if (uploadError) throw uploadError
 
+    // Parse PDF once so we can both embed and generate policy health insights.
+    const parsed = await pdf(buffer)
+
+    let policyAnalysis: any = null
+    try {
+      policyAnalysis = await generatePolicyHealthReport(parsed.text || '')
+    } catch {
+      policyAnalysis = {
+        status: 'risky',
+        score: 60,
+        summary: 'Policy health analysis unavailable. Review policy coverage manually.',
+        recommended_additions: [],
+      }
+    }
+
     // Insert policy_document tagged to this org
     const { data: doc, error: docError } = await admin
       .from('policy_documents')
@@ -68,6 +83,7 @@ export async function POST(request: NextRequest) {
         organisation_id: orgId,          // ← org-tagged
         name,
         file_path: fileName,
+        policy_analysis: policyAnalysis,
         is_active: false,
         uploaded_by: user.id,
       })
@@ -75,7 +91,6 @@ export async function POST(request: NextRequest) {
     if (docError) throw docError
 
     // Parse PDF → chunk → embed
-    const parsed = await pdf(buffer)
     const chunks = chunkText(parsed.text)
     const embeddings = await embedBatch(chunks)
 

@@ -5,6 +5,35 @@ import { sendEmail, resubmissionTemplate, verdictTemplate, submissionConfirmatio
 
 const MAX_SIZE = 10 * 1024 * 1024 // 10MB
 
+function parseLocation(locationRaw?: string | null) {
+  const raw = (locationRaw || '').trim()
+  if (!raw) return { city: null as string | null, country: null as string | null }
+
+  const parts = raw.split(',').map((p) => p.trim()).filter(Boolean)
+  if (parts.length === 1) return { city: parts[0], country: parts[0] }
+
+  return {
+    city: parts[0] || null,
+    country: parts[parts.length - 1] || null,
+  }
+}
+
+function median(values: number[]) {
+  if (values.length === 0) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 !== 0
+    ? sorted[mid]
+    : (sorted[mid - 1] + sorted[mid]) / 2
+}
+
+function standardDeviation(values: number[]) {
+  if (values.length < 2) return 0
+  const mean = values.reduce((sum, v) => sum + v, 0) / values.length
+  const variance = values.reduce((acc, v) => acc + (v - mean) ** 2, 0) / values.length
+  return Math.sqrt(variance)
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Standard (RLS) client for auth — admin client only for writes
@@ -17,7 +46,7 @@ export async function POST(request: NextRequest) {
     // Fetch profile including org_id (RLS ensures this is the caller's own row)
     const { data: profile } = await supabase
       .from('profiles')
-      .select('location, seniority, role, full_name, email, organisation_id')
+      .select('location, department, seniority, role, full_name, email, organisation_id')
       .eq('id', user.id)
       .single()
 
@@ -156,18 +185,25 @@ export async function POST(request: NextRequest) {
       startOfMonth.setDate(1)
       startOfMonth.setHours(0,0,0,0)
 
-      const [{ data: limitConfig }, { data: monthClaims }, { data: orgConfig }] = await Promise.all([
+      const location = parseLocation(profile?.location)
+      const roleDepartment = profile?.department || 'unknown'
+      const roleSeniority = profile?.seniority || 'mid'
+      const roleCategory = manualCategory || extracted.category || 'other'
+      const locationCountry = location.country || 'Unknown'
+      const locationCity = location.city || 'Unknown'
+
+      const [{ data: limitConfig }, { data: monthClaims }, { data: orgConfig }, { data: baselineRows }] = await Promise.all([
         supabase
           .from('spend_limits')
           .select('monthly_limit, currency')
-          .eq('seniority', profile?.seniority ?? 'mid')
-          .eq('category', manualCategory || extracted.category || 'other')
+          .eq('seniority', roleSeniority)
+          .eq('category', roleCategory)
           .single(),
         supabase
           .from('claims')
           .select('amount')
           .eq('employee_id', user.id)
-          .eq('category', manualCategory || extracted.category || 'other')
+          .eq('category', roleCategory)
           .in('status', ['approved', 'pending'])
           .gte('created_at', startOfMonth.toISOString()),
         // Fetch auto_approve_threshold from org config
@@ -175,7 +211,21 @@ export async function POST(request: NextRequest) {
           .from('organisations')
           .select('auto_approve_threshold')
           .eq('id', orgId)
-          .single()
+          .single(),
+        // Build a location-aware baseline for this profile cohort.
+        supabase
+          .from('claims')
+          .select('amount')
+          .eq('organisation_id', orgId)
+          .eq('employee_department', roleDepartment)
+          .eq('employee_seniority', roleSeniority)
+          .eq('category', roleCategory)
+          .eq('status', 'approved')
+          .eq('location_country', locationCountry)
+          .eq('location_city', locationCity)
+          .not('amount', 'is', null)
+          .gte('created_at', new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString())
+          .limit(500)
       ])
 
       // ── Duplicate Detection (30-day pre-inference check) ─────
@@ -200,6 +250,36 @@ export async function POST(request: NextRequest) {
 
       const currentMonthlySpend = monthClaims?.reduce((sum, c) => sum + Number(c.amount || 0), 0) ?? 0
 
+      const baselineAmounts = (baselineRows || [])
+        .map((r: any) => Number(r.amount))
+        .filter((v: number) => Number.isFinite(v) && v > 0)
+
+      const baselineMedian = median(baselineAmounts)
+      const baselineStddevRaw = standardDeviation(baselineAmounts)
+      const baselineStddev = baselineStddevRaw > 0 ? baselineStddevRaw : 1
+      const zScore = baselineAmounts.length >= 5
+        ? (claimAmount - baselineMedian) / baselineStddev
+        : 0
+
+      // Store/recompute latest cohort baseline for fast lookup and trendability.
+      if (baselineAmounts.length >= 5) {
+        await admin
+          .from('statistical_baselines')
+          .upsert({
+            organisation_id: orgId,
+            department: roleDepartment,
+            seniority: roleSeniority,
+            category: roleCategory,
+            location_country: locationCountry,
+            median_amount: baselineMedian,
+            stddev_amount: baselineStddevRaw,
+            sample_size: baselineAmounts.length,
+            updated_at: new Date().toISOString(),
+          }, {
+            onConflict: 'organisation_id,department,seniority,category,location_country',
+          })
+      }
+
       const structuredLimit = limitConfig ? {
         limit: limitConfig.monthly_limit,
         currency: limitConfig.currency,
@@ -214,9 +294,18 @@ export async function POST(request: NextRequest) {
         category: manualCategory || extracted.category || 'other',
         businessPurpose,
         employeeLocation: profile?.location || 'Unknown',
-        employeeSeniority: profile?.seniority || 'mid',
+        employeeSeniority: roleSeniority,
         policyChunks,
         structuredLimit,
+        statisticalBaseline: baselineAmounts.length >= 5 ? {
+          department: roleDepartment,
+          locationCity,
+          locationCountry,
+          median: baselineMedian,
+          stddev: baselineStddevRaw,
+          zScore,
+          sampleSize: baselineAmounts.length,
+        } : null,
         previousRejectionContext: previousRejectionContext
           ? `${previousRejectionContext}${isDuplicate ? ` Additionally, a potential duplicate was detected from ${new Date(duplicateDate!).toLocaleDateString()}.` : ''}`
           : isDuplicate
@@ -257,6 +346,10 @@ export async function POST(request: NextRequest) {
         currency: extracted.currency,
         receipt_date: extracted.date,
         category: manualCategory || extracted.category,
+        employee_department: roleDepartment,
+        employee_seniority: roleSeniority,
+        location_country: locationCountry,
+        location_city: locationCity,
         business_purpose: businessPurpose,
         ai_verdict: verdictData.verdict,
         ai_reason: verdictData.reason,

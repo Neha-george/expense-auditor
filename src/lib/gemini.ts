@@ -44,6 +44,15 @@ export async function generateVerdict(params: {
   policyChunks: string[]
   structuredLimit?: { limit: number; currency: string; currentSpend: number } | null
   previousRejectionContext?: string | null
+  statisticalBaseline?: {
+    department?: string | null
+    locationCity?: string | null
+    locationCountry?: string | null
+    median: number
+    stddev: number
+    zScore: number
+    sampleSize: number
+  } | null
 }) {
   const policyContext = params.policyChunks
     .map((chunk, i) => `[Policy clause ${i + 1}]: ${chunk}`)
@@ -64,6 +73,24 @@ RECEIPT DATA:
 
 RELEVANT POLICY CLAUSES:
 ${policyContext}
+
+${params.statisticalBaseline ? `
+STATISTICAL RISK CONTEXT:
+- Department: ${params.statisticalBaseline.department || 'Unknown'}
+- Location city: ${params.statisticalBaseline.locationCity || 'Unknown'}
+- Location country: ${params.statisticalBaseline.locationCountry || 'Unknown'}
+- Baseline sample size: ${params.statisticalBaseline.sampleSize}
+- Median claim amount: ${params.statisticalBaseline.median.toFixed(2)} ${params.currency}
+- Standard deviation: ${params.statisticalBaseline.stddev.toFixed(2)} ${params.currency}
+- This claim's Z-score: ${params.statisticalBaseline.zScore.toFixed(2)}σ
+
+Context: This claim is ${params.statisticalBaseline.zScore.toFixed(1)}σ (Standard Deviations) away from the median for this specific role in this city. A deviation > 3σ usually indicates high risk.
+
+Use this as a mathematical anchor:
+- |Z| <= 2: typically normal behavior
+- 2 < |Z| <= 3: unusual, may need caution
+- |Z| > 3: strong anomaly signal, usually requires flagging or rejection unless policy text explicitly allows it
+` : ''}
 
 ${params.structuredLimit ? `
 HARD SPEND LIMIT CONSTRAINT:
@@ -100,6 +127,78 @@ Rules:
 - confidence 0.7–0.9: moderate certainty, some ambiguity exists
 - confidence < 0.7: low certainty, mandatory human review required
 Return ONLY the JSON. No markdown, no explanation.`
+
+  const result = await visionModel.generateContent(prompt)
+  const text = result.response.text().trim()
+    .replace(/^```json\n?/, '').replace(/\n?```$/, '')
+
+  return JSON.parse(text)
+}
+
+export async function generatePolicyHealthReport(policyText: string) {
+  const prompt = `You are an enterprise expense-policy quality auditor.
+Analyze the policy text and produce a health report.
+
+Return ONLY valid JSON with this exact shape:
+{
+  "status": "healthy" | "risky" | "critical",
+  "score": number,
+  "summary": string,
+  "recommended_additions": [
+    {
+      "title": string,
+      "why": string,
+      "priority": "high" | "medium" | "low"
+    }
+  ]
+}
+
+Scoring guidance:
+- 80 to 100 => healthy
+- 50 to 79 => risky
+- 0 to 49 => critical
+
+Focus on practical enforceability and ambiguity reduction for receipts, duplicate claims, per-category limits, location-aware rules, approvals, and auditability.
+Cap recommendations to max 8 items.
+
+POLICY TEXT:
+${policyText.slice(0, 25000)}
+`
+
+  const result = await visionModel.generateContent(prompt)
+  const text = result.response.text().trim()
+    .replace(/^```json\n?/, '').replace(/\n?```$/, '')
+
+  return JSON.parse(text)
+}
+
+export async function generatePolicyClause(params: {
+  recommendationTitle: string
+  recommendationWhy: string
+  organisationName?: string | null
+  tone?: 'strict' | 'balanced' | 'lenient'
+}) {
+  const prompt = `You are a senior policy writer for corporate expense policy documents.
+Draft ONE production-ready policy clause.
+
+Inputs:
+- Recommendation title: ${params.recommendationTitle}
+- Reason: ${params.recommendationWhy}
+- Organization: ${params.organisationName || 'This organisation'}
+- Tone: ${params.tone || 'balanced'}
+
+Return ONLY valid JSON with this exact shape:
+{
+  "title": string,
+  "clause_text": string,
+  "rationale": string
+}
+
+Rules:
+- The clause_text should be specific, enforceable, and testable.
+- Avoid vague words like "reasonable" unless paired with measurable limits.
+- Keep clause_text under 120 words.
+`
 
   const result = await visionModel.generateContent(prompt)
   const text = result.response.text().trim()

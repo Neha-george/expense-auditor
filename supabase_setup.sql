@@ -47,6 +47,7 @@ create table policy_documents (
   organisation_id uuid references organisations(id) on delete cascade not null,
   name            text not null,
   file_path       text not null,
+  policy_analysis jsonb,
   is_active       boolean default false,
   uploaded_by     uuid references profiles(id),
   created_at      timestamptz default now()
@@ -78,6 +79,10 @@ create table claims (
   id               uuid primary key default gen_random_uuid(),
   organisation_id  uuid references organisations(id) on delete cascade not null,
   employee_id      uuid references profiles(id) not null,
+  employee_department text,
+  employee_seniority text,
+  location_city    text,
+  location_country text,
   receipt_url      text not null,
   merchant         text,
   amount           numeric(10,2),
@@ -98,6 +103,16 @@ create table claims (
   is_duplicate_warning boolean default false,
   created_at       timestamptz default now(),
   updated_at       timestamptz default now()
+);
+
+create index idx_claims_baseline_dims on claims (
+  organisation_id,
+  employee_department,
+  employee_seniority,
+  category,
+  location_country,
+  location_city,
+  created_at
 );
 
 -- Auto-update updated_at
@@ -318,6 +333,44 @@ create policy "admins manage spend limits"
 
 create policy "members view spend limits"
   on spend_limits for select
+  using (organisation_id = auth_user_org_id());
+
+-- ============================================================
+-- 13B. STATISTICAL BASELINES
+-- ============================================================
+create table statistical_baselines (
+  id               uuid primary key default gen_random_uuid(),
+  organisation_id  uuid references organisations(id) on delete cascade not null,
+  department       text not null,
+  seniority        text not null,
+  category         text not null,
+  location_country text not null,
+  median_amount    numeric(10,2) not null,
+  stddev_amount    numeric(10,2) not null,
+  sample_size      int not null default 0,
+  updated_at       timestamptz default now(),
+  unique(organisation_id, department, seniority, category, location_country)
+);
+
+create index idx_statistical_baselines_lookup on statistical_baselines (
+  organisation_id,
+  department,
+  seniority,
+  category,
+  location_country
+);
+
+alter table statistical_baselines enable row level security;
+
+create policy "admins manage statistical baselines"
+  on statistical_baselines for all
+  using (
+    organisation_id = auth_user_org_id()
+    and exists (select 1 from profiles where id = auth.uid() and role = 'admin')
+  );
+
+create policy "members view statistical baselines"
+  on statistical_baselines for select
   using (organisation_id = auth_user_org_id());
 
 -- ============================================================
