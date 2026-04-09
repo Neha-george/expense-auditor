@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useEffect, useState } from 'react'
-import { LogOut, FileText, CheckCircle, MessageSquare, LayoutDashboard, Database, Scale, Settings } from 'lucide-react'
+import { LogOut, FileText, CheckCircle, MessageSquare, LayoutDashboard, Database, Scale, Settings, UploadCloud } from 'lucide-react'
 
 export default function Sidebar({ role }: { role: 'employee' | 'admin' }) {
   const pathname = usePathname()
@@ -13,6 +13,7 @@ export default function Sidebar({ role }: { role: 'employee' | 'admin' }) {
   const [loggingOut, setLoggingOut] = useState(false)
 
   const employeeLinks = [
+    { href: '/employee/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/employee/submit', label: 'Submit Claim', icon: FileText },
     { href: '/employee/claims', label: 'My Claims', icon: CheckCircle },
     { href: '/employee/assistant', label: 'Policy Assistant', icon: MessageSquare },
@@ -22,6 +23,7 @@ export default function Sidebar({ role }: { role: 'employee' | 'admin' }) {
     { href: '/admin/claims', label: 'Claims Queue', icon: Database },
     { href: '/admin/policies', label: 'Policy Hub', icon: Scale },
     { href: '/admin/spend-limits', label: 'Spend Limits', icon: Settings },
+    { href: '/admin/csv', label: 'Bulk Import', icon: UploadCloud },
   ]
 
   const links = role === 'admin' ? adminLinks : employeeLinks
