@@ -202,7 +202,25 @@ export default function AdminPoliciesPage() {
                    {loading ? (
                      <tr><td colSpan={5} className="p-6 text-center text-zinc-500">Loading library...</td></tr>
                    ) : policies.length === 0 ? (
-                     <tr><td colSpan={5} className="p-6 text-center text-zinc-500">No policy documents found.</td></tr>
+                     <tr>
+                        <td colSpan={5}>
+                          <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+                            <div className="w-14 h-14 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mb-4">
+                              <FileText className="w-7 h-7 text-blue-400" />
+                            </div>
+                            <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">No policies uploaded yet</h3>
+                            <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1 max-w-xs">
+                              Upload your first expense policy PDF to activate AI-powered claim auditing for your organisation.
+                            </p>
+                            <button
+                              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                              className="mt-4 px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
+                            >
+                              Upload First Policy
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
                    ) : (
                      policies.map(policy => (
                        <tr key={policy.id} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
