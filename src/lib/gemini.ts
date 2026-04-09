@@ -43,6 +43,7 @@ export async function generateVerdict(params: {
   employeeSeniority: string
   policyChunks: string[]
   structuredLimit?: { limit: number; currency: string; currentSpend: number } | null
+  previousRejectionContext?: string | null
 }) {
   const policyContext = params.policyChunks
     .map((chunk, i) => `[Policy clause ${i + 1}]: ${chunk}`)
@@ -72,6 +73,12 @@ Available budget remaining: ${params.structuredLimit.limit - params.structuredLi
 
 If the receipt currency (${params.currency}) is different from the limit currency (${params.structuredLimit.currency}), you MUST approximate the conversion to ${params.structuredLimit.currency} using current market rates.
 If the expense amount (after any required currency conversion) exceeds the available budget remaining, the verdict MUST be "flagged" regardless of the policy clauses.
+` : ''}
+
+${params.previousRejectionContext ? `
+RESUBMISSION CONTEXT:
+This is a resubmission! The previous attempt was flagged or rejected because: "${params.previousRejectionContext}".
+Verify STRICTLY if the user has corrected this specific issue based on the newly uploaded receipt or the provided override fields. If the issue persists, reject it again.
 ` : ''}
 
 Based on the policy clauses, the optional hard spend limits above, and the employee's profile, determine if this expense is compliant.

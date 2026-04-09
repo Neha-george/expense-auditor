@@ -42,6 +42,12 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
     const file = formData.get('receipt') as File
     const businessPurpose = formData.get('business_purpose') as string
+    
+    // Resubmission contextual properties
+    const parentClaimId = formData.get('parent_claim_id') as string | null
+    const manualMerchant = formData.get('manual_merchant') as string | null
+    const manualAmount = formData.get('manual_amount') as string | null
+    const manualCategory = formData.get('manual_category') as string | null
 
     if (!file) return NextResponse.json({ error: 'Receipt file required' }, { status: 400 })
     if (file.size > MAX_SIZE)
@@ -127,6 +133,19 @@ export async function POST(request: NextRequest) {
       policy_reference: null as string | null,
     }
 
+    let previousRejectionContext = null
+    if (parentClaimId) {
+      const { data: parentClaim } = await supabase
+        .from('claims')
+        .select('ai_reason, admin_note')
+        .eq('id', parentClaimId)
+        .single()
+      
+      if (parentClaim) {
+        previousRejectionContext = parentClaim.admin_note || parentClaim.ai_reason || 'Unknown previous error.'
+      }
+    }
+
     if (policyChunks.length > 0) {
       const startOfMonth = new Date()
       startOfMonth.setDate(1)
@@ -137,13 +156,13 @@ export async function POST(request: NextRequest) {
           .from('spend_limits')
           .select('monthly_limit, currency')
           .eq('seniority', profile?.seniority ?? 'mid')
-          .eq('category', extracted.category ?? 'other')
+          .eq('category', manualCategory || extracted.category || 'other')
           .single(),
         supabase
           .from('claims')
           .select('amount')
           .eq('employee_id', user.id)
-          .eq('category', extracted.category ?? 'other')
+          .eq('category', manualCategory || extracted.category || 'other')
           .in('status', ['approved', 'pending'])
           .gte('created_at', startOfMonth.toISOString())
       ])
@@ -157,16 +176,17 @@ export async function POST(request: NextRequest) {
       } : null
 
       const args = {
-        merchant: extracted.merchant ?? 'Unknown',
-        amount: extracted.amount ?? 0,
-        currency: extracted.currency ?? 'USD',
-        date: extracted.date ?? new Date().toISOString().split('T')[0],
-        category: extracted.category ?? 'other',
+        merchant: manualMerchant || extracted.merchant || 'Unknown',
+        amount: Number(manualAmount) || extracted.amount || 0,
+        currency: extracted.currency || 'USD',
+        date: extracted.date || new Date().toISOString().split('T')[0],
+        category: manualCategory || extracted.category || 'other',
         businessPurpose,
-        employeeLocation: profile?.location ?? 'Unknown',
-        employeeSeniority: profile?.seniority ?? 'mid',
+        employeeLocation: profile?.location || 'Unknown',
+        employeeSeniority: profile?.seniority || 'mid',
         policyChunks,
-        structuredLimit
+        structuredLimit,
+        previousRejectionContext
       }
       try {
         verdictData = await generateVerdict(args)
@@ -185,12 +205,13 @@ export async function POST(request: NextRequest) {
       .insert({
         organisation_id: orgId,          // ← multi-tenancy
         employee_id: user.id,
+        parent_claim_id: parentClaimId || null,
         receipt_url: publicUrl,
-        merchant: extracted.merchant,
-        amount: extracted.amount,
+        merchant: manualMerchant || extracted.merchant,
+        amount: manualAmount ? Number(manualAmount) : extracted.amount,
         currency: extracted.currency,
         receipt_date: extracted.date,
-        category: extracted.category,
+        category: manualCategory || extracted.category,
         business_purpose: businessPurpose,
         ai_verdict: verdictData.verdict,
         ai_reason: verdictData.reason,

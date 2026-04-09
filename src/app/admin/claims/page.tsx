@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { FileDown, X, Check, Search, Filter } from 'lucide-react'
+import { createClient } from '@/lib/supabase'
 
 export default function AdminClaimsPage() {
   const [claims, setClaims] = useState<any[]>([])
@@ -11,6 +12,20 @@ export default function AdminClaimsPage() {
   const [selectedClaim, setSelectedClaim] = useState<any>(null)
   const [adminNote, setAdminNote] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
+  const [history, setHistory] = useState<any[]>([])
+
+  useEffect(() => {
+    if (!selectedClaim) { 
+      setHistory([])
+      return 
+    }
+    const rootId = selectedClaim.parent_claim_id || selectedClaim.id
+    createClient().from('claims')
+      .select('id, amount, status, created_at, ai_reason, admin_note, parent_claim_id')
+      .or(`id.eq.${rootId},parent_claim_id.eq.${rootId}`)
+      .order('created_at', { ascending: true })
+      .then(({data}) => setHistory(data || []))
+  }, [selectedClaim])
 
   const fetchClaims = async (status = 'all') => {
     setLoading(true)
@@ -201,6 +216,35 @@ export default function AdminClaimsPage() {
                   {selectedClaim.business_purpose}
                 </p>
               </div>
+
+              {history.length > 1 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-blue-700 dark:text-blue-400">Resubmission Timeline</h3>
+                  <div className="p-4 rounded-lg bg-blue-50/50 border border-blue-100 dark:bg-blue-900/10 dark:border-blue-900/30 space-y-0">
+                    {history.map((c, i, arr) => (
+                      <div key={c.id} className={`flex items-start gap-4 ${c.id === selectedClaim.id ? 'opacity-100 scale-[1.02]' : 'opacity-60'} transition-transform`}>
+                        <div className="relative flex flex-col items-center mt-1">
+                          <div className={`w-2.5 h-2.5 rounded-full ${c.id === selectedClaim.id ? 'bg-blue-600' : 'bg-zinc-400'}`} />
+                          {i !== arr.length - 1 && <div className="w-px h-12 bg-zinc-300 dark:bg-zinc-700 my-1" />}
+                        </div>
+                        <div className="flex-1 pb-4">
+                          <p className={`text-xs font-semibold ${c.id === selectedClaim.id ? 'text-blue-700 dark:text-blue-400' : 'text-zinc-700 dark:text-zinc-300'}`}>
+                            Version {i + 1} {c.id === selectedClaim.id && '(Currently Viewing)'} <span className="text-zinc-500 font-normal ml-2">{new Date(c.created_at).toLocaleString()}</span>
+                          </p>
+                          {(c.status === 'rejected' || c.status === 'flagged') && (
+                            <p className="text-xs mt-1 text-red-600 dark:text-red-400 bg-white dark:bg-black/20 p-2 rounded border border-red-100 dark:border-red-900/30 inline-block w-full">
+                              ⚠ {c.admin_note || c.ai_reason}
+                            </p>
+                          )}
+                          {c.status === 'approved' && (
+                             <p className="text-xs mt-1 text-green-600 dark:text-green-400 font-medium">✓ Approved</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold">AI Assessment</h3>
