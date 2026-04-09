@@ -81,6 +81,28 @@ export default function AdminDashboardPage() {
     }
 
     fetchDashboard()
+
+    // Real-time subscription to automatically update dashboard seamlessly natively
+    const supabaseClient = createClient()
+    const channel = supabaseClient
+      .channel('schema-db-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'claims',
+        },
+        () => {
+          // Instantly re-fetch the dashboard on any insert/update (e.g. from background worker)
+          fetchDashboard()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabaseClient.removeChannel(channel)
+    }
   }, [])
 
   const formatCurrency = (amt: number) => {

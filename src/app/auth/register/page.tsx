@@ -1,14 +1,18 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
+import { Suspense } from 'react'
 
-export default function RegisterPage() {
+function RegisterForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const inviteCode = searchParams.get('invite_code')
+  
   const supabase = createClient()
   const [loading, setLoading] = useState(false)
   
@@ -68,7 +72,13 @@ export default function RegisterPage() {
 
     setLoading(false)
     toast.success('Registration successful!')
-    router.push('/employee/submit')
+    
+    // Redirect to onboarding. Pass along invite code to auto-join.
+    if (inviteCode) {
+      router.push(`/onboarding?invite_code=${inviteCode}`)
+    } else {
+      router.push('/onboarding')
+    }
     router.refresh()
   }
 
@@ -140,5 +150,13 @@ export default function RegisterPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center p-8">Loading...</div>}>
+      <RegisterForm />
+    </Suspense>
   )
 }
