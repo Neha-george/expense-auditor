@@ -38,7 +38,7 @@ export default function BulkImportPage() {
       const parsed = lines.slice(1).map(line => {
         // Rudimentary CSV parse avoiding heavy libraries: split by comma but preserve quoted strings
         let p = '', inQuotes = false
-        const cols = []
+        const cols: string[] = []
         for (let i = 0; i < line.length; i++) {
             if (line[i] === '"') inQuotes = !inQuotes
             else if (line[i] === ',' && !inQuotes) {

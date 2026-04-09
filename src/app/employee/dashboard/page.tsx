@@ -161,7 +161,7 @@ export default function EmployeeDashboard() {
                 <Tooltip 
                   cursor={{ fill: 'transparent' }}
                   contentStyle={{ borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#18181b', color: '#fff' }}
-                  formatter={(value: number) => [`$${value}`, undefined]}
+                  formatter={(value: any) => [`$${value}`, undefined]}
                 />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
                 <Bar dataKey="Spent" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={50} />
