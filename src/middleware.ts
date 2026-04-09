@@ -23,32 +23,52 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   const path = request.nextUrl.pathname
 
-  // Redirect unauthenticated users to login
-  if (!user && !path.startsWith('/login') && !path.startsWith('/register')) {
+  // ── Public / static paths — always allow ──────────────────
+  const publicPaths = ['/login', '/auth/register', '/onboarding/request-access']
+  const isPublic = publicPaths.some(p => path.startsWith(p))
+  if (isPublic) return supabaseResponse
+
+  // ── RULE 1: Must be authenticated ─────────────────────────
+  if (!user) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // Guard admin routes
-  if (path.startsWith('/admin') && user) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
+  // Fetch profile once — all subsequent guards need it
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, organisation_id, onboarding_complete')
+    .eq('id', user.id)
+    .single()
 
-    if (profile?.role !== 'admin') {
-      return NextResponse.redirect(new URL('/employee/submit', request.url))
-    }
+  // ── RULE 2: Must belong to an organisation ─────────────────
+  // Exception: /onboarding itself is allowed so the user can create/join an org
+  if (!profile?.organisation_id && !path.startsWith('/onboarding')) {
+    return NextResponse.redirect(new URL('/onboarding', request.url))
   }
 
-  // Redirect root to appropriate dashboard
-  if (path === '/' && user) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
+  // ── RULE 3: Admin must complete onboarding ─────────────────
+  if (
+    profile?.organisation_id &&
+    !profile?.onboarding_complete &&
+    profile?.role === 'admin' &&
+    !path.startsWith('/onboarding')
+  ) {
+    return NextResponse.redirect(new URL('/onboarding', request.url))
+  }
 
+  // ── Already in onboarding but fully set up → exit ──────────
+  if (path.startsWith('/onboarding') && profile?.organisation_id && profile?.onboarding_complete) {
+    const dest = profile.role === 'admin' ? '/admin/dashboard' : '/employee/submit'
+    return NextResponse.redirect(new URL(dest, request.url))
+  }
+
+  // ── RULE 4: Guard Admin routes ────────────────────────────
+  if (path.startsWith('/admin') && profile?.role !== 'admin') {
+    return NextResponse.redirect(new URL('/employee/submit', request.url))
+  }
+
+  // ── RULE 5: Redirect root to appropriate dashboard ────────
+  if (path === '/') {
     const dest = profile?.role === 'admin' ? '/admin/dashboard' : '/employee/submit'
     return NextResponse.redirect(new URL(dest, request.url))
   }

@@ -7,16 +7,24 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> } | { params: { id: string } }
 ) {
   try {
-    const resolvedParams = await params;
+    const resolvedParams = await params
     const supabase = await createServerSupabase()
     const admin = createAdminSupabase()
+
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { data: profile } = await admin
-      .from('profiles').select('role').eq('id', user.id).single()
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role, organisation_id')
+      .eq('id', user.id)
+      .single()
+
     if (profile?.role !== 'admin')
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+    const orgId = profile?.organisation_id
+    if (!orgId) return NextResponse.json({ error: 'No organisation found' }, { status: 403 })
 
     const body = await request.json()
     const { verdict, note } = body
@@ -24,6 +32,7 @@ export async function PATCH(
     if (!['approved', 'rejected'].includes(verdict))
       return NextResponse.json({ error: 'verdict must be approved or rejected' }, { status: 400 })
 
+    // Update is scoped to both the claim id AND the org — prevents cross-tenant writes
     const { data, error } = await admin
       .from('claims')
       .update({
@@ -33,13 +42,15 @@ export async function PATCH(
         status: verdict,
       })
       .eq('id', resolvedParams.id)
-      .select('*, profiles!claims_employee_id_fkey(full_name, email)').single()
+      .eq('organisation_id', orgId)        // ← org-scoped write guard
+      .select('*, profiles!claims_employee_id_fkey(full_name, email)')
+      .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     if (data && data.profiles && (data.profiles as any).email) {
-      const p = data.profiles as any;
-      const amt = Number(data.amount || 0);
+      const p = data.profiles as any
+      const amt = Number(data.amount || 0)
       sendEmail({
         to: p.email,
         subject: `Expense Claim ${verdict.toUpperCase()} (Manual Review) - PolicyLens`,

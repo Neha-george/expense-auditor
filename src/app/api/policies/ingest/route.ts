@@ -14,7 +14,7 @@ function chunkText(text: string, chunkSize = 1600, overlap = 200): string[] {
   return chunks.filter(c => c.length > 100)
 }
 
-export const maxDuration = 60;
+export const maxDuration = 60
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,10 +26,17 @@ export async function POST(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { data: profile } = await admin
-      .from('profiles').select('role').eq('id', user.id).single()
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role, organisation_id')
+      .eq('id', user.id)
+      .single()
+
     if (profile?.role !== 'admin')
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+    const orgId = profile?.organisation_id
+    if (!orgId) return NextResponse.json({ error: 'No organisation configured' }, { status: 403 })
 
     const formData = await request.formData()
     const file = formData.get('file') as File
@@ -44,46 +51,44 @@ export async function POST(request: NextRequest) {
 
     // Server-side MIME validation via magic bytes
     const hex = buffer.toString('hex', 0, 4).toUpperCase()
-    if (!hex.startsWith('25504446')) {
+    if (!hex.startsWith('25504446'))
       return NextResponse.json({ error: 'Invalid file type. Must be a real PDF.' }, { status: 400 })
-    }
 
-    // Upload PDF to Supabase Storage
-    const fileName = `${Date.now()}-${file.name}`
-
+    // Upload PDF to Supabase Storage (folder per org)
+    const fileName = `${orgId}/${Date.now()}-${file.name}`
     const { error: uploadError } = await admin.storage
       .from('policy-docs')
       .upload(fileName, buffer, { contentType: 'application/pdf' })
     if (uploadError) throw uploadError
 
-    // Insert document record
+    // Insert policy_document tagged to this org
     const { data: doc, error: docError } = await admin
       .from('policy_documents')
-      .insert({ name, file_path: fileName, is_active: false, uploaded_by: user.id })
+      .insert({
+        organisation_id: orgId,          // ← org-tagged
+        name,
+        file_path: fileName,
+        is_active: false,
+        uploaded_by: user.id,
+      })
       .select().single()
     if (docError) throw docError
 
-    // Parse PDF text
+    // Parse PDF → chunk → embed
     const parsed = await pdf(buffer)
-    const rawText = parsed.text
-
-    // Chunk text
-    const chunks = chunkText(rawText)
-
-    // Embed all chunks
+    const chunks = chunkText(parsed.text)
     const embeddings = await embedBatch(chunks)
 
-    // Insert chunks + embeddings
+    // All chunks tagged to this org + document
     const rows = chunks.map((content, i) => ({
+      organisation_id: orgId,            // ← org-tagged
       document_id: doc.id,
       chunk_index: i,
       content,
       embedding: JSON.stringify(embeddings[i]),
     }))
 
-    const { error: chunksError } = await admin
-      .from('policy_chunks')
-      .insert(rows)
+    const { error: chunksError } = await admin.from('policy_chunks').insert(rows)
     if (chunksError) throw chunksError
 
     return NextResponse.json({ success: true, documentId: doc.id, chunks: chunks.length })

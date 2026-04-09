@@ -26,3 +26,24 @@ export function createAdminSupabase() {
     { cookies: { getAll: () => [], setAll: () => {} } }
   )
 }
+
+/**
+ * Returns the organisation_id of the currently authenticated user.
+ * Uses the standard (RLS-enabled) server client so the query is
+ * automatically scoped to the calling user's own profile row.
+ *
+ * Returns null if the user has no organisation yet (pre-onboarding).
+ */
+export async function getOrgId(): Promise<string | null> {
+  const supabase = await createServerSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data } = await supabase
+    .from('profiles')
+    .select('organisation_id')
+    .eq('id', user.id)
+    .single()
+
+  return data?.organisation_id ?? null
+}
