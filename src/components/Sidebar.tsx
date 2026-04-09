@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useEffect, useState } from 'react'
+import { useRealtime } from '@/providers/RealtimeProvider'
 import { LogOut, FileText, CheckCircle, MessageSquare, LayoutDashboard, Database, Scale, Settings, UploadCloud } from 'lucide-react'
 
 export default function Sidebar({ role }: { role: 'employee' | 'admin' }) {
@@ -11,6 +12,7 @@ export default function Sidebar({ role }: { role: 'employee' | 'admin' }) {
   const router = useRouter()
   const supabase = createClient()
   const [loggingOut, setLoggingOut] = useState(false)
+  const { newClaimsCount } = useRealtime()
 
   const employeeLinks = [
     { href: '/employee/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -58,8 +60,15 @@ export default function Sidebar({ role }: { role: 'employee' | 'admin' }) {
                   : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900/50 dark:hover:text-zinc-50'
               }`}
             >
-              <Icon className="h-4 w-4" />
-              {link.label}
+              <div className="flex items-center gap-3 flex-1">
+                <Icon className="h-4 w-4" />
+                {link.label}
+              </div>
+              {link.label === 'Claims Queue' && newClaimsCount > 0 && (
+                 <span className="flex h-5 items-center justify-center rounded-full bg-blue-600 px-2 text-xs font-medium text-white shadow-sm transition-all duration-300 transform scale-100 inline-block animate-in pop-in">
+                   {newClaimsCount}
+                 </span>
+              )}
             </Link>
           )
         })}

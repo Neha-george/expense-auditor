@@ -87,7 +87,8 @@ Return ONLY a valid JSON object:
 {
   "verdict": "approved", "flagged", or "rejected",
   "reason": "one clear sentence explaining the decision",
-  "policy_reference": "exact quote or reference from the policy clause used, or null if no relevant clause found"
+  "policy_reference": "exact quote or reference from the policy clause used, or null if no relevant clause found",
+  "confidence": a number between 0.0 and 1.0 representing how certain you are about this verdict
 }
 
 Rules:
@@ -95,6 +96,9 @@ Rules:
 - "flagged" = ambiguous, needs human review, or partially exceeds limits
 - "rejected" = clearly violates policy
 - If no relevant policy clause exists, verdict must be "flagged"
+- confidence > 0.9: you are highly certain (clear approval or clear rejection)
+- confidence 0.7–0.9: moderate certainty, some ambiguity exists
+- confidence < 0.7: low certainty, mandatory human review required
 Return ONLY the JSON. No markdown, no explanation.`
 
   const result = await visionModel.generateContent(prompt)

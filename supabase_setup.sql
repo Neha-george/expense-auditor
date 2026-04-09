@@ -19,6 +19,7 @@ create table organisations (
   default_currency  text default 'USD',
   fiscal_year_start int  default 1 check (fiscal_year_start between 1 and 12),
   invite_code       text unique not null default substring(md5(random()::text), 1, 8),
+  auto_approve_threshold numeric default 1000,
   created_at        timestamptz default now()
 );
 
@@ -92,6 +93,9 @@ create table claims (
   parent_claim_id  uuid references claims(id) on delete set null,
   reviewed_by      uuid references profiles(id),
   status           text check (status in ('pending','approved','flagged','rejected')) default 'pending',
+  confidence       numeric,
+  requires_review  boolean default false,
+  is_duplicate_warning boolean default false,
   created_at       timestamptz default now(),
   updated_at       timestamptz default now()
 );
@@ -391,6 +395,12 @@ $$ language plpgsql security definer;
 create trigger trigger_log_claim_update
   after update on claims
   for each row execute function log_claim_update();
+
+-- Enable Realtime for Claims
+alter publication supabase_realtime add table claims;
+
+-- Fraud Detection Indexes
+create index idx_claims_fraud_check on claims (employee_id, merchant, amount, created_at);
 
 -- ============================================================
 -- Done. Next steps:
