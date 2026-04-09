@@ -35,14 +35,21 @@ export async function POST(request: NextRequest) {
     const file = formData.get('file') as File
     const name = formData.get('name') as string
 
-    if (!file || file.type !== 'application/pdf')
-      return NextResponse.json({ error: 'PDF required' }, { status: 400 })
+    if (!file)
+      return NextResponse.json({ error: 'PDF file required' }, { status: 400 })
     if (file.size > 20 * 1024 * 1024)
       return NextResponse.json({ error: 'File too large (max 20MB)' }, { status: 400 })
 
+    const buffer = Buffer.from(await file.arrayBuffer())
+
+    // Server-side MIME validation via magic bytes
+    const hex = buffer.toString('hex', 0, 4).toUpperCase()
+    if (!hex.startsWith('25504446')) {
+      return NextResponse.json({ error: 'Invalid file type. Must be a real PDF.' }, { status: 400 })
+    }
+
     // Upload PDF to Supabase Storage
     const fileName = `${Date.now()}-${file.name}`
-    const buffer = Buffer.from(await file.arrayBuffer())
 
     const { error: uploadError } = await admin.storage
       .from('policy-docs')

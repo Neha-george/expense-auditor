@@ -36,19 +36,31 @@ export async function POST(request: NextRequest) {
     const file = formData.get('receipt') as File
     const businessPurpose = formData.get('business_purpose') as string
 
-    // Validate
     if (!file) return NextResponse.json({ error: 'Receipt file required' }, { status: 400 })
-    if (!ALLOWED_TYPES.includes(file.type))
-      return NextResponse.json({ error: 'Only JPG, PNG, WebP, and PDF accepted' }, { status: 400 })
     if (file.size > MAX_SIZE)
       return NextResponse.json({ error: 'File too large (max 10MB)' }, { status: 400 })
     if (!businessPurpose?.trim())
       return NextResponse.json({ error: 'Business purpose is required' }, { status: 400 })
 
-    // Upload receipt to storage
-    const ext = file.name.split('.').pop()
-    const fileName = `${user.id}/${Date.now()}.${ext}`
     const buffer = Buffer.from(await file.arrayBuffer())
+    
+    // Server-side MIME validation via magic bytes
+    const hex = buffer.toString('hex', 0, 4).toUpperCase()
+    let isValidType = false
+    let actualType = file.type
+    
+    if (hex.startsWith('FFD8FF')) { isValidType = true; actualType = 'image/jpeg' }
+    else if (hex.startsWith('89504E47')) { isValidType = true; actualType = 'image/png' }
+    else if (hex.startsWith('52494646')) { isValidType = true; actualType = 'image/webp' }
+    else if (hex.startsWith('25504446')) { isValidType = true; actualType = 'application/pdf' }
+
+    if (!isValidType) {
+      return NextResponse.json({ error: 'Only JPG, PNG, WebP, and PDF accepted. Actual type invalid.' }, { status: 400 })
+    }
+
+    // Upload receipt to storage
+    const ext = actualType.split('/')[1]
+    const fileName = `${user.id}/${Date.now()}.${ext}`
 
     const { error: uploadError } = await admin.storage
       .from('receipts')
