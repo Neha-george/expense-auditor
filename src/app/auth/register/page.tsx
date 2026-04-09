@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { createClient } from '@/lib/supabase'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
@@ -13,7 +12,6 @@ function RegisterForm() {
   const searchParams = useSearchParams()
   const inviteCode = searchParams.get('invite_code')
   
-  const supabase = createClient()
   const [loading, setLoading] = useState(false)
   
   const [formData, setFormData] = useState({
@@ -39,47 +37,51 @@ function RegisterForm() {
 
     setLoading(true)
 
-    // 1. Sign up
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: formData.email,
-      password: formData.password,
-      options: {
-        data: { full_name: formData.fullName },
-      },
-    })
-
-    if (authError) {
-      toast.error(authError.message)
-      setLoading(false)
-      return
-    }
-
-    // 2. Wait for auto-created profile trigger via trigger in the database, then update it
-    if (authData.user) {
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({
+    try {
+      // Call server-side registration API (uses admin client to bypass
+      // "email signups are disabled" restriction in Supabase)
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+          fullName: formData.fullName,
           department: formData.department,
           location: formData.location,
           seniority: formData.seniority,
-        })
-        .eq('id', authData.user.id)
+        }),
+      })
 
-      if (profileError) {
-        console.error('Profile update error', profileError)
+      const result = await res.json()
+
+      if (!res.ok) {
+        toast.error(result.error || 'Registration failed')
+        setLoading(false)
+        return
       }
-    }
 
-    setLoading(false)
-    toast.success('Registration successful!')
-    
-    // Redirect to onboarding. Pass along invite code to auto-join.
-    if (inviteCode) {
-      router.push(`/onboarding?invite_code=${inviteCode}`)
-    } else {
-      router.push('/onboarding')
+      if (!result.autoSignIn) {
+        toast.info(result.message || 'Account created. Please sign in.')
+        router.push('/auth/login')
+        return
+      }
+
+      toast.success('Registration successful!')
+      
+      // Redirect to onboarding. Pass along invite code to auto-join.
+      if (inviteCode) {
+        router.push(`/onboarding?invite_code=${inviteCode}`)
+      } else {
+        router.push('/onboarding')
+      }
+      router.refresh()
+    } catch (err) {
+      console.error('Registration error:', err)
+      toast.error('Something went wrong. Please try again.')
+    } finally {
+      setLoading(false)
     }
-    router.refresh()
   }
 
   return (

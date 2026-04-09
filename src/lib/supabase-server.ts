@@ -19,11 +19,18 @@ export async function createServerSupabase() {
   )
 }
 
+import { createClient as createRawClient } from '@supabase/supabase-js'
+
 export function createAdminSupabase() {
-  return createServerClient(
+  return createRawClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { cookies: { getAll: () => [], setAll: () => {} } }
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    }
   )
 }
 
