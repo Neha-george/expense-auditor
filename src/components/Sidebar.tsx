@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase'
 import { useEffect, useState } from 'react'
 import { useRealtime } from '@/providers/RealtimeProvider'
 import { LogOut, FileText, CheckCircle, MessageSquare, LayoutDashboard, Database, Scale, Settings, UploadCloud } from 'lucide-react'
+import ThemeToggle from '@/components/ThemeToggle'
 
 export default function Sidebar({ role }: { role: 'employee' | 'admin' }) {
   const pathname = usePathname()
@@ -74,7 +75,8 @@ export default function Sidebar({ role }: { role: 'employee' | 'admin' }) {
         })}
       </nav>
 
-      <div className="border-t border-zinc-200 p-4 dark:border-zinc-800">
+      <div className="border-t border-zinc-200 p-4 dark:border-zinc-800 space-y-1">
+        <ThemeToggle />
         <button
           onClick={handleLogout}
           disabled={loggingOut}
