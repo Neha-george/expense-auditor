@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { format } from 'date-fns' // we don't have date-fns, let's just use native date
 import { X } from 'lucide-react'
 
 export default function MyClaimsPage() {

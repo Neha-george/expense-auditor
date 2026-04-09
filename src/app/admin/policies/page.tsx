@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { UploadCloud, CheckCircle2, Shield, Loader2, FileText, AlertCircle } from 'lucide-react'
-import { format } from 'date-fns' // we'll use native dates
 
 export default function AdminPoliciesPage() {
   const [policies, setPolicies] = useState<any[]>([])

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminSupabase, createServerSupabase } from '@/lib/supabase-server'
 import { embedBatch } from '@/lib/gemini'
-const pdf = require('pdf-parse')
 
 // Chunk text into ~400-token pieces with 50-token overlap
 function chunkText(text: string, chunkSize = 1600, overlap = 200): string[] {
@@ -19,6 +18,7 @@ export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   try {
+    const pdf = require('pdf-parse')
     const supabase = await createServerSupabase()
     const admin = createAdminSupabase()
 
