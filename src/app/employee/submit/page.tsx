@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, Suspense } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { toast } from 'sonner'
-import { CheckCircle2, XCircle, AlertCircle, Loader2, UploadCloud, RefreshCw, Camera } from 'lucide-react'
+import { CheckCircle2, XCircle, AlertCircle, Loader2, UploadCloud, RefreshCw, Camera, TrendingUp } from 'lucide-react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import imageCompression from 'browser-image-compression'
 
@@ -99,6 +99,15 @@ function SubmitClaimForm() {
   const [manualAmount, setManualAmount] = useState('')
   const [manualCategory, setManualCategory] = useState('')
   const [qualityWarning, setQualityWarning] = useState<string | null>(null)
+  const [budget, setBudget] = useState<Record<string, { limit: number; spent: number; currency: string }> | null>(null)
+
+  // Fetch all category budgets once on mount
+  useEffect(() => {
+    fetch('/api/employee/budget')
+      .then(r => r.json())
+      .then(d => { if (d.budget) setBudget(d.budget) })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (resubmitId) {
@@ -348,6 +357,51 @@ function SubmitClaimForm() {
                 </div>
               </div>
             </div>
+
+            {/* Live Budget Meter */}
+            {budget && (() => {
+              const cat = (manualCategory || '').toLowerCase().trim()
+              const info = cat && budget[cat] ? budget[cat] : null
+              if (!info) return null
+              const pct = Math.min(100, (info.spent / info.limit) * 100)
+              const remaining = Math.max(0, info.limit - info.spent)
+              const isOver = info.spent >= info.limit
+              const isNear = !isOver && pct >= 80
+              const barColor = isOver ? 'bg-red-500' : isNear ? 'bg-amber-500' : 'bg-emerald-500'
+              const fmt = (v: number) =>
+                new Intl.NumberFormat('en-IN', { style: 'currency', currency: info.currency || 'INR', maximumFractionDigits: 0 }).format(v)
+              return (
+                <div className={`rounded-xl border p-4 ${
+                  isOver ? 'border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/20'
+                  : isNear ? 'border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/20'
+                  : 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-950/20'
+                }`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className={`w-4 h-4 ${
+                        isOver ? 'text-red-600' : isNear ? 'text-amber-600' : 'text-emerald-600'
+                      }`} />
+                      <span className="text-sm font-semibold capitalize">{cat} Budget</span>
+                    </div>
+                    <span className={`text-xs font-bold ${
+                      isOver ? 'text-red-700 dark:text-red-400' : isNear ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'
+                    }`}>
+                      {isOver ? 'LIMIT EXCEEDED' : `${fmt(remaining)} remaining`}
+                    </span>
+                  </div>
+                  <div className="w-full h-2 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
+                    <div
+                      className={`h-2 rounded-full transition-all duration-500 ${barColor}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between mt-1.5 text-xs text-zinc-500">
+                    <span>Spent: {fmt(info.spent)}</span>
+                    <span>Limit: {fmt(info.limit)}</span>
+                  </div>
+                </div>
+              )
+            })()}
 
             <button
               onClick={handleSubmit}
