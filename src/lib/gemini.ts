@@ -74,7 +74,40 @@ Return ONLY a valid JSON object with exactly these fields:
   "confidence": "high", "medium", or "low"
 }
 If the image is blurry, too dark, or unreadable, set is_readable to false and all other fields to null.
+If is_readable is true, do NOT leave merchant/amount/category empty. Infer best-effort values from the receipt text.
+Use INR when currency is unclear.
 Return ONLY the JSON. No explanation, no markdown, no code blocks.`
+
+  const result = await visionModel.generateContent([
+    { inlineData: { data: imageBase64, mimeType } },
+    prompt,
+  ])
+
+  const text = result.response.text().trim()
+    .replace(/^```json\n?/, '').replace(/\n?```$/, '')
+
+  return JSON.parse(text)
+}
+
+// Fallback parser for images where primary OCR parser returns weak/missing fields.
+export async function extractReceiptDataBestEffort(imageBase64: string, mimeType: string) {
+  const prompt = `Extract receipt details from this image and return ONLY valid JSON:
+{
+  "is_readable": true or false,
+  "merchant": "string or null",
+  "amount": number or null,
+  "currency": "3-letter currency code or INR",
+  "date": "YYYY-MM-DD or null",
+  "category": one of: "meals","travel","accommodation","transport","office","entertainment","other",
+  "confidence": "high", "medium", or "low"
+}
+
+Rules:
+- If text is readable, infer merchant/amount/category with best effort (avoid nulls for these three fields).
+- If amount appears as integer/decimal, return numeric only.
+- Use INR when currency is missing/ambiguous.
+- If truly unreadable, set is_readable to false and others null.
+- Return JSON only.`
 
   const result = await visionModel.generateContent([
     { inlineData: { data: imageBase64, mimeType } },

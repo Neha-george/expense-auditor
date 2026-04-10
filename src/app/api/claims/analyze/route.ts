@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminSupabase, createServerSupabase } from '@/lib/supabase-server'
-import { extractReceiptData, extractReceiptDataFromText, generateVerdict, embedText } from '@/lib/gemini'
+import { extractReceiptData, extractReceiptDataBestEffort, extractReceiptDataFromText, generateVerdict, embedText } from '@/lib/gemini'
 import { sendEmail, resubmissionTemplate, verdictTemplate, submissionConfirmationTemplate, adminFlaggedAlertTemplate } from '@/lib/email'
 
 const MAX_SIZE = 10 * 1024 * 1024 // 10MB
@@ -146,6 +146,21 @@ export async function POST(request: NextRequest) {
         } catch (e2: any) {
           console.error('OCR Attempt 2 failed:', e2.message)
         }
+      }
+    }
+
+    if (
+      extracted &&
+      actualType !== 'application/pdf' &&
+      (!hasCoreFields(extracted) || extracted?.confidence === 'low')
+    ) {
+      try {
+        const bestEffort = await extractReceiptDataBestEffort(imageBase64, actualType)
+        if (bestEffort && hasCoreFields(bestEffort)) {
+          extracted = bestEffort
+        }
+      } catch (bestEffortErr: any) {
+        console.warn('Best-effort OCR fallback failed:', bestEffortErr?.message)
       }
     }
 
