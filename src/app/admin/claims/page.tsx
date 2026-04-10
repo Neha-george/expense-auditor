@@ -250,7 +250,11 @@ export default function AdminClaimsPage() {
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               
               <div className="aspect-video bg-zinc-100 dark:bg-zinc-900 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-800 flex items-center justify-center">
-                 <img src={selectedClaim.receipt_url} alt="Receipt" className="max-w-full max-h-full object-contain" />
+                 {selectedClaim.receipt_view_url || selectedClaim.receipt_url ? (
+                   <img src={selectedClaim.receipt_view_url || selectedClaim.receipt_url} alt="Receipt" className="max-w-full max-h-full object-contain" />
+                 ) : (
+                   <p className="text-sm text-zinc-500">Receipt preview unavailable</p>
+                 )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
