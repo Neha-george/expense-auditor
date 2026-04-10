@@ -96,3 +96,49 @@ export async function PATCH(
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const resolvedParams = await params
+    const supabase = await createServerSupabase()
+    const admin = createAdminSupabase()
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    // Verify ownership of the claim
+    const { data: currentClaim } = await supabase
+      .from('claims')
+      .select('employee_id, organisation_id')
+      .eq('id', resolvedParams.id)
+      .single()
+
+    if (!currentClaim) return NextResponse.json({ error: 'Claim not found' }, { status: 404 })
+
+    // Check if user is the owner or an admin
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (currentClaim.employee_id !== user.id && profile?.role !== 'admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    // Delete the claim
+    const { error } = await admin
+      .from('claims')
+      .delete()
+      .eq('id', resolvedParams.id)
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    return NextResponse.json({ success: true })
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
+}
