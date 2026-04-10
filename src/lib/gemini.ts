@@ -480,7 +480,8 @@ Their current approved and pending spend this month is ${params.structuredLimit.
 Available budget remaining: ${params.structuredLimit.limit - params.structuredLimit.currentSpend} ${params.structuredLimit.currency}.
 
 If the receipt currency (${params.currency}) is different from the limit currency (${params.structuredLimit.currency}), you MUST approximate the conversion to ${params.structuredLimit.currency} using current market rates.
-If the expense amount (after any required currency conversion) exceeds the available budget remaining, the verdict MUST be "flagged" regardless of the policy clauses.
+If the expense amount (after any required currency conversion) exceeds the available budget remaining, the verdict MUST be "flagged" due to "exceeding monthly limit" UNLESS the expense violates a strict policy prohibition. 
+CRITICAL RULE: If a policy clause strictly prohibits the items purchased (e.g., alcohol, nightclubs, prohibited items), you MUST return "rejected" and cite the policy clause, completely ignoring the spend limit. Rejection always takes highest precedence.
 ` : ''}
 
 ${params.previousRejectionContext ? `
