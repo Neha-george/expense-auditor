@@ -16,7 +16,7 @@ create table organisations (
   name              text not null,
   slug              text unique not null,
   plan              text check (plan in ('free','pro','enterprise')) default 'free',
-  default_currency  text default 'USD',
+  default_currency  text default 'INR',
   fiscal_year_start int  default 1 check (fiscal_year_start between 1 and 12),
   invite_code       text unique not null default substring(md5(random()::text), 1, 8),
   auto_approve_threshold numeric default 1000,
