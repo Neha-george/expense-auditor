@@ -46,7 +46,8 @@ export default function AssistantPage() {
       })
 
       if (!res.ok) {
-        throw new Error('Failed to get response')
+        const errorText = (await res.text()) || 'Failed to get response'
+        throw new Error(errorText)
       }
 
       if (res.body) {
@@ -72,7 +73,7 @@ export default function AssistantPage() {
       console.error(err)
       setMessages(prev => prev.map(msg => 
         msg.id === assistantMessageId 
-          ? { ...msg, content: 'Sorry, I encountered an error. Please try again.' }
+          ? { ...msg, content: err.message || 'Sorry, I encountered an error. Please try again.' }
           : msg
       ))
     } finally {
