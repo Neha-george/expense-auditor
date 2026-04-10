@@ -19,13 +19,49 @@ function needsExtractionBackfill(claim: ClaimRow) {
 }
 
 async function extractFromReceiptUrl(url: string) {
-  const response = await fetch(url)
-  if (!response.ok) throw new Error(`Receipt fetch failed (${response.status})`)
+  let buffer: Buffer | null = null
+  let mimeType = 'application/octet-stream'
 
-  const arrayBuffer = await response.arrayBuffer()
-  const buffer = Buffer.from(arrayBuffer)
+  try {
+    const response = await fetch(url)
+    if (response.ok) {
+      const arrayBuffer = await response.arrayBuffer()
+      buffer = Buffer.from(arrayBuffer)
+      mimeType = response.headers.get('content-type') || mimeType
+    }
+  } catch {
+    // Fallback to storage download below.
+  }
+
+  if (!buffer) {
+    const publicMarker = '/storage/v1/object/public/receipts/'
+    const signedMarker = '/storage/v1/object/sign/receipts/'
+    let path = ''
+
+    if (url.includes(publicMarker)) {
+      path = url.split(publicMarker)[1] || ''
+    } else if (url.includes(signedMarker)) {
+      path = url.split(signedMarker)[1] || ''
+    }
+
+    path = decodeURIComponent(path.split('?')[0] || '')
+    if (!path) throw new Error('Unable to resolve receipt storage path')
+
+    const admin = createAdminSupabase()
+    const { data: downloaded, error: downloadError } = await admin.storage
+      .from('receipts')
+      .download(path)
+
+    if (downloadError || !downloaded) {
+      throw new Error(downloadError?.message || 'Receipt storage download failed')
+    }
+
+    const arrayBuffer = await downloaded.arrayBuffer()
+    buffer = Buffer.from(arrayBuffer)
+    mimeType = downloaded.type || mimeType
+  }
+
   const headerHex = buffer.toString('hex', 0, 4).toUpperCase()
-  let mimeType = response.headers.get('content-type') || 'application/octet-stream'
 
   if (headerHex.startsWith('25504446')) mimeType = 'application/pdf'
   else if (headerHex.startsWith('FFD8FF')) mimeType = 'image/jpeg'
@@ -103,6 +139,7 @@ export async function GET(request: NextRequest) {
         if ((claim.amount == null) && updates.amount == null) updates.amount = 0
         if (!claim.category && !updates.category) updates.category = 'other'
         if (!claim.currency && !updates.currency) updates.currency = 'INR'
+        if (!claim.receipt_date && !updates.receipt_date) updates.receipt_date = new Date().toISOString().split('T')[0]
 
         if (Object.keys(updates).length > 0) {
           const { error: updateError } = await admin
