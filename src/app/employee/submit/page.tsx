@@ -7,6 +7,80 @@ import { CheckCircle2, XCircle, AlertCircle, Loader2, UploadCloud, RefreshCw, Ca
 import { useSearchParams, useRouter } from 'next/navigation'
 import imageCompression from 'browser-image-compression'
 
+async function checkImageQuality(file: File): Promise<string | null> {
+  return new Promise((resolve) => {
+    // Only check images, skip PDFs
+    if (!file.type.startsWith('image/')) return resolve(null)
+
+    const img = new Image()
+    const objectUrl = URL.createObjectURL(file)
+
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl)
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return resolve(null)
+
+      // Scale down image to max 500px for speedy processing
+      const scale = Math.min(500 / img.width, 500 / img.height, 1)
+      const w = canvas.width = Math.floor(img.width * scale)
+      const h = canvas.height = Math.floor(img.height * scale)
+      
+      ctx.drawImage(img, 0, 0, w, h)
+      let imageData;
+      try {
+        imageData = ctx.getImageData(0, 0, w, h)
+      } catch(e) {
+        // Handle cross-origin issues or canvas poisoning safety mechanisms
+        return resolve(null)
+      }
+      
+      const data = imageData.data
+      let sumLuminance = 0
+      const grayscale = new Float32Array(w * h)
+
+      for (let i = 0; i < data.length; i += 4) {
+        const lum = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]
+        sumLuminance += lum
+        grayscale[i/4] = lum
+      }
+
+      const avgLuminance = sumLuminance / (w * h)
+      if (avgLuminance < 40) return resolve("Image appears severely dark. AI reading might fail.")
+      if (avgLuminance > 240) return resolve("Image appears highly overexposed/washed out.")
+
+      // Quick Laplacian variance for blur detection
+      let laplacianSum = 0
+      let laplacianSqSum = 0
+      let validPixels = 0
+
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          const i = y * w + x
+          const val = 
+            -4 * grayscale[i] +
+            grayscale[i - 1] + grayscale[i + 1] +
+            grayscale[i - w] + grayscale[i + w]
+            
+          laplacianSum += val
+          laplacianSqSum += val * val
+          validPixels++
+        }
+      }
+
+      const mean = laplacianSum / validPixels
+      const variance = (laplacianSqSum / validPixels) - (mean * mean)
+
+      // Variance threshold tuned for downscaled receipts
+      if (variance < 60) return resolve("Image appears blurry. Ensure text is sharp before submitting.")
+
+      resolve(null)
+    }
+    img.onerror = () => resolve(null)
+    img.src = objectUrl
+  })
+}
+
 function SubmitClaimForm() {
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -24,6 +98,7 @@ function SubmitClaimForm() {
   const [manualMerchant, setManualMerchant] = useState('')
   const [manualAmount, setManualAmount] = useState('')
   const [manualCategory, setManualCategory] = useState('')
+  const [qualityWarning, setQualityWarning] = useState<string | null>(null)
 
   useEffect(() => {
     if (resubmitId) {
@@ -71,6 +146,10 @@ function SubmitClaimForm() {
         setPreview(null)
     }
     setFile(processedFile)
+    
+    // Check quality of the final processed file
+    const warning = await checkImageQuality(processedFile)
+    setQualityWarning(warning)
   }
 
   const handleCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -141,6 +220,7 @@ function SubmitClaimForm() {
     setPurpose('')
     setResult(null)
     setUnreadable(null)
+    setQualityWarning(null)
     setProgressStep(0)
     router.replace('/employee/submit')
   }
@@ -206,8 +286,18 @@ function SubmitClaimForm() {
                     <p className="font-medium text-zinc-900 dark:text-zinc-100 truncate">{file.name}</p>
                     <p className="text-zinc-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
                   </div>
-                  <button onClick={() => setFile(null)} className="text-sm text-red-600 hover:underline shrink-0 p-2 min-h-[48px]">Remove</button>
+                  <button onClick={() => { setFile(null); setQualityWarning(null); }} className="text-sm text-red-600 hover:underline shrink-0 p-2 min-h-[48px]">Remove</button>
                 </div>
+                
+                {qualityWarning && (
+                  <div className="flex items-start gap-2 p-3 text-sm rounded bg-amber-50 border border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-900/50 dark:text-amber-400">
+                    <AlertCircle className="w-5 h-5 shrink-0" />
+                    <div>
+                      <p className="font-semibold">Quality Warning</p>
+                      <p>{qualityWarning}</p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
