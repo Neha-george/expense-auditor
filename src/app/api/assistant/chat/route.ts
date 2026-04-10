@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminSupabase, createServerSupabase } from '@/lib/supabase-server'
-import { embedText } from '@/lib/gemini'
+import { embedText, generateContentWithBackoff } from '@/lib/gemini'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { sendEmail } from '@/lib/email'
 
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     if (!message?.trim()) return new Response('Message required', { status: 400 })
 
     // Resolve active policy list (used for context and admin notifications)
-    const { data: activePolicies, error: activePoliciesError } = await supabase
+    const { data: activePolicies, error: activePoliciesError } = await admin
       .from('policy_documents')
       .select('id, name')
       .eq('organisation_id', orgId)
@@ -194,14 +194,16 @@ ${policyContext}`
     } catch (streamErr: any) {
       console.warn('Assistant stream fallback:', streamErr?.message)
       try {
-        const fallback = await model.generateContent(message)
-        const text = fallback.response.text()?.trim() || 'I could not generate a response right now. Please try again.'
+        // Use our robust multi-model fallback wrapper from gemini.ts
+        const fallbackResponse = await generateContentWithBackoff([
+          { text: systemPrompt },
+          message
+        ])
+        const text = fallbackResponse.response.text()?.trim() || 'I could not generate a response right now. Please try again.'
         return textResponse(text)
       } catch (fallbackErr: any) {
-        if (isQuotaOrRateLimitError(fallbackErr)) {
-          return textResponse(buildPolicyFallbackAnswer(message, chunks, activePolicyNames))
-        }
-        throw fallbackErr
+        console.warn('All AI models failed, using manual policy format:', fallbackErr?.message)
+        return textResponse(buildPolicyFallbackAnswer(message, chunks, activePolicyNames))
       }
     }
   } catch (err: any) {

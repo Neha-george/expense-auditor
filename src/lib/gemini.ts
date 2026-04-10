@@ -53,7 +53,7 @@ function getGeminiUnavailableReason(): string | null {
   return null
 }
 
-async function generateContentWithBackoff(input: any) {
+export async function generateContentWithBackoff(input: any) {
   const unavailableReason = getGeminiUnavailableReason()
   if (unavailableReason) throw new Error(unavailableReason)
 
