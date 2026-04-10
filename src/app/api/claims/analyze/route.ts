@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminSupabase, createServerSupabase } from '@/lib/supabase-server'
-import { extractReceiptData, generateVerdict, embedText } from '@/lib/gemini'
+import { extractReceiptData, extractReceiptDataFromText, generateVerdict, embedText } from '@/lib/gemini'
 import { sendEmail, resubmissionTemplate, verdictTemplate, submissionConfirmationTemplate, adminFlaggedAlertTemplate } from '@/lib/email'
 
 const MAX_SIZE = 10 * 1024 * 1024 // 10MB
@@ -111,28 +111,69 @@ export async function POST(request: NextRequest) {
     const { data: { publicUrl } } = admin.storage
       .from('receipts').getPublicUrl(fileName)
 
-    // ── Step 1: OCR ───────────────────────────────────────────
+    // ── Step 1: Receipt extraction (image OCR + PDF text fallback) ─────────
     const imageBase64 = buffer.toString('base64')
-    let extracted: any
-    try {
-      extracted = await extractReceiptData(imageBase64, actualType)
-    } catch (e1: any) {
-      console.warn("OCR Attempt 1 failed:", e1.message)
+    let extracted: any = null
+
+    const hasCoreFields = (value: any) => {
+      return Boolean(value?.merchant) && Number.isFinite(Number(value?.amount)) && Boolean(value?.category)
+    }
+
+    const tryPdfTextExtraction = async () => {
+      try {
+        const pdf = require('pdf-parse/lib/pdf-parse.js') as (buf: Buffer) => Promise<{ text: string }>
+        const parsed = await pdf(buffer)
+        if (!parsed?.text?.trim()) return null
+        return await extractReceiptDataFromText(parsed.text)
+      } catch (pdfError: any) {
+        console.warn('PDF text extraction failed:', pdfError?.message)
+        return null
+      }
+    }
+
+    // Prefer text extraction for PDFs because image OCR on PDFs is less reliable.
+    if (actualType === 'application/pdf') {
+      extracted = await tryPdfTextExtraction()
+    }
+
+    if (!extracted) {
       try {
         extracted = await extractReceiptData(imageBase64, actualType)
-      } catch (e2: any) {
-        console.error("OCR Attempt 2 failed:", e2.message)
-        // Fallback so the frontend doesn't crash on undefined 'amount', and so the claim still saves in the DB
-        extracted = {
-          is_readable: true,
-          merchant: manualMerchant || 'Unknown Merchant (OCR Failed)',
-          amount: Number(manualAmount) || 0,
-          currency: 'INR',
-          date: new Date().toISOString().split('T')[0],
-          category: manualCategory || 'other',
-          confidence: 'low'
+      } catch (e1: any) {
+        console.warn('OCR Attempt 1 failed:', e1.message)
+        try {
+          extracted = await extractReceiptData(imageBase64, actualType)
+        } catch (e2: any) {
+          console.error('OCR Attempt 2 failed:', e2.message)
         }
       }
+    }
+
+    if ((!extracted || !hasCoreFields(extracted)) && actualType === 'application/pdf') {
+      const textExtracted = await tryPdfTextExtraction()
+      if (textExtracted) extracted = textExtracted
+    }
+
+    if (!extracted) {
+      extracted = {
+        is_readable: true,
+        merchant: null,
+        amount: null,
+        currency: 'INR',
+        date: null,
+        category: null,
+        confidence: 'low',
+      }
+    }
+
+    extracted = {
+      ...extracted,
+      is_readable: extracted?.is_readable !== false,
+      merchant: (manualMerchant && manualMerchant.trim()) || extracted?.merchant || 'Unknown Merchant',
+      amount: manualAmount ? Number(manualAmount) : (Number.isFinite(Number(extracted?.amount)) ? Number(extracted.amount) : 0),
+      currency: extracted?.currency || 'INR',
+      date: extracted?.date || new Date().toISOString().split('T')[0],
+      category: (manualCategory && manualCategory.trim()) || extracted?.category || 'other',
     }
 
     // Unreadable receipt → notify and return early

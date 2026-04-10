@@ -87,6 +87,36 @@ Return ONLY the JSON. No explanation, no markdown, no code blocks.`
   return JSON.parse(text)
 }
 
+// Text parser: extract structured receipt fields from OCR/PDF text.
+export async function extractReceiptDataFromText(receiptText: string) {
+  const prompt = `You are an expense receipt parser.
+Analyze the receipt text and return ONLY a valid JSON object with exactly these fields:
+{
+  "is_readable": true or false,
+  "merchant": "merchant name or null",
+  "amount": number or null,
+  "currency": "3-letter currency code or INR",
+  "date": "YYYY-MM-DD or null",
+  "category": one of: "meals","travel","accommodation","transport","office","entertainment","other",
+  "confidence": "high", "medium", or "low"
+}
+
+Rules:
+- If receipt text is too noisy to infer key fields, set is_readable to false.
+- Prefer INR when currency is not explicit.
+- amount must be numeric only.
+- Return JSON only. No markdown.
+
+RECEIPT TEXT:
+${receiptText.slice(0, 20000)}`
+
+  const result = await visionModel.generateContent(prompt)
+  const text = result.response.text().trim()
+    .replace(/^```json\n?/, '').replace(/\n?```$/, '')
+
+  return JSON.parse(text)
+}
+
 // Verdict: given receipt data + policy context + employee profile → return verdict
 export async function generateVerdict(params: {
   merchant: string
