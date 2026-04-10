@@ -515,8 +515,9 @@ export async function POST(request: NextRequest) {
       })
 
       try {
-        verdictData = await withTimeout(generateVerdict(args), 2500, 'Verdict generation')
-      } catch {
+        verdictData = await withTimeout(generateVerdict(args), 25000, 'Verdict generation')
+      } catch (err: any) {
+        console.warn('[Verdict Gen] Failed/timeout, using fallback:', err.message)
         verdictData = deterministic
       }
 
