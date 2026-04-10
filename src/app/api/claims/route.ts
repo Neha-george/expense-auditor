@@ -14,6 +14,23 @@ type ClaimRow = {
   [key: string]: any
 }
 
+function extractReceiptStoragePath(url?: string | null) {
+  const source = url || ''
+  if (!source) return ''
+
+  const publicMarker = '/storage/v1/object/public/receipts/'
+  const signedMarker = '/storage/v1/object/sign/receipts/'
+  let path = ''
+
+  if (source.includes(publicMarker)) {
+    path = source.split(publicMarker)[1] || ''
+  } else if (source.includes(signedMarker)) {
+    path = source.split(signedMarker)[1] || ''
+  }
+
+  return decodeURIComponent(path.split('?')[0] || '')
+}
+
 function needsExtractionBackfill(claim: ClaimRow) {
   return !claim.merchant || claim.amount == null || !claim.category
 }
@@ -34,17 +51,7 @@ async function extractFromReceiptUrl(url: string) {
   }
 
   if (!buffer) {
-    const publicMarker = '/storage/v1/object/public/receipts/'
-    const signedMarker = '/storage/v1/object/sign/receipts/'
-    let path = ''
-
-    if (url.includes(publicMarker)) {
-      path = url.split(publicMarker)[1] || ''
-    } else if (url.includes(signedMarker)) {
-      path = url.split(signedMarker)[1] || ''
-    }
-
-    path = decodeURIComponent(path.split('?')[0] || '')
+    const path = extractReceiptStoragePath(url)
     if (!path) throw new Error('Unable to resolve receipt storage path')
 
     const admin = createAdminSupabase()
@@ -112,6 +119,24 @@ export async function GET(request: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     const resolvedClaims: ClaimRow[] = [...(claims || [])]
+
+    // Add short-lived signed URLs for reliable receipt viewing in admin/employee UI.
+    for (const claim of resolvedClaims) {
+      const path = extractReceiptStoragePath(claim.receipt_url)
+      if (!path) continue
+
+      try {
+        const { data: signed, error: signedErr } = await admin.storage
+          .from('receipts')
+          .createSignedUrl(path, 60 * 30)
+
+        if (!signedErr && signed?.signedUrl) {
+          ;(claim as any).receipt_view_url = signed.signedUrl
+        }
+      } catch {
+        // Keep existing receipt_url fallback when signed URL generation fails.
+      }
+    }
 
     // Best-effort backfill for legacy rows missing extracted receipt fields.
     const candidates = resolvedClaims.filter(needsExtractionBackfill)
