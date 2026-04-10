@@ -264,19 +264,26 @@ create policy "users insert own logs"
 -- ============================================================
 -- Note: organisation_id is intentionally NULL on signup.
 -- Middleware will redirect to /onboarding until it is set.
-create or replace function handle_new_user()
-returns trigger as $$
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
 begin
-  insert into profiles (id, email, full_name)
+  insert into public.profiles (id, email, full_name)
   values (
     new.id,
     new.email,
-    new.raw_user_meta_data->>'full_name'
+    coalesce(new.raw_user_meta_data->>'full_name', '')
   );
   return new;
+exception
+  when others then
+    -- Log the error temporarily for debugging if needed, but don't fail the insert
+    raise notice 'Error setting up profile profile %', SQLERRM;
+    return new;
 end;
-$$ language plpgsql security definer;
-
+$$;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function handle_new_user();
