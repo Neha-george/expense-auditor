@@ -189,7 +189,7 @@ export async function POST(request: NextRequest) {
 
     // First pass: fast local extraction to avoid quota/network waits.
     try {
-      const localExtracted = await withTimeout(extractReceiptDataLocally(buffer, actualType), 3500, 'Local receipt extraction')
+      const localExtracted = await withTimeout(extractReceiptDataLocally(buffer, actualType), 12000, 'Local receipt extraction')
       if (localExtracted?.is_readable) {
         extracted = { ...localExtracted }
       }
@@ -304,6 +304,19 @@ export async function POST(request: NextRequest) {
         p_organisation_id: orgId,         // ← KEY: tenant isolation
       })
       policyChunks = chunks?.map((c: any) => c.content) ?? []
+
+      if (policyChunks.length === 0 && activePolicies.length > 0) {
+        const activePolicyIds = activePolicies.map((p: any) => p.id)
+        const { data: fallbackChunks } = await admin
+          .from('policy_chunks')
+          .select('content')
+          .eq('organisation_id', orgId)
+          .in('document_id', activePolicyIds)
+          .order('chunk_index', { ascending: true })
+          .limit(16)
+
+        policyChunks = fallbackChunks?.map((c: any) => c.content) ?? []
+      }
     }
 
     // ── Step 5: Generate verdict ──────────────────────────────

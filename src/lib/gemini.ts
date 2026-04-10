@@ -1,10 +1,12 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { createHash } from 'crypto'
+import { existsSync } from 'fs'
+import { join } from 'path'
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null
 const visionModel = genAI?.getGenerativeModel({ model: 'gemini-2.0-flash' })
-const ENABLE_TESSERACT_OCR = process.env.ENABLE_TESSERACT_OCR === 'true'
+const ENABLE_TESSERACT_OCR = process.env.ENABLE_TESSERACT_OCR !== 'false'
 
 let geminiBlockedUntil = 0
 
@@ -234,7 +236,15 @@ async function getOcrWorker() {
   if (!ocrWorkerPromise) {
     ocrWorkerPromise = (async () => {
       const { createWorker } = await import('tesseract.js')
-      return await createWorker('eng')
+
+      const workerPath = join(process.cwd(), 'node_modules', 'tesseract.js', 'src', 'worker-script', 'node', 'index.js')
+      const corePath = join(process.cwd(), 'node_modules', 'tesseract.js-core', 'tesseract-core-simd.wasm.js')
+
+      const options: Record<string, any> = {}
+      if (existsSync(workerPath)) options.workerPath = workerPath
+      if (existsSync(corePath)) options.corePath = corePath
+
+      return await createWorker('eng', 1, options)
     })()
   }
   return ocrWorkerPromise
