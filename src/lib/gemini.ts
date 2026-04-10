@@ -2,7 +2,9 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 const visionModel = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
-const embeddingModel = genAI.getGenerativeModel({ model: 'embedding-001' })
+
+// Embedding model names can vary by API version/account rollout.
+const EMBEDDING_MODEL_CANDIDATES = ['text-embedding-004', 'embedding-001'] as const
 
 // OCR: extract structured data from a receipt image
 export async function extractReceiptData(imageBase64: string, mimeType: string) {
@@ -218,8 +220,27 @@ Rules:
 
 // Embed a text string → 768-dimension vector
 export async function embedText(text: string): Promise<number[]> {
-  const result = await embeddingModel.embedContent(text)
-  return result.embedding.values
+  let lastError: unknown
+
+  for (const modelName of EMBEDDING_MODEL_CANDIDATES) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName })
+      const result = await model.embedContent(text)
+      const values = result?.embedding?.values
+
+      if (Array.isArray(values) && values.length > 0) {
+        return values
+      }
+
+      throw new Error(`Empty embedding returned for model ${modelName}`)
+    } catch (err) {
+      lastError = err
+    }
+  }
+
+  throw lastError instanceof Error
+    ? new Error(`Failed to generate embeddings with available models: ${lastError.message}`)
+    : new Error('Failed to generate embeddings with available models')
 }
 
 // Embed multiple texts in batches of 20
