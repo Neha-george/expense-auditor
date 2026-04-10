@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminSupabase, createServerSupabase } from '@/lib/supabase-server'
-import { extractReceiptData, extractReceiptDataFromText } from '@/lib/gemini'
+import { extractReceiptDataLocally } from '@/lib/gemini'
 
 type ClaimRow = {
   id: string
@@ -68,13 +68,7 @@ async function extractFromReceiptUrl(url: string) {
   else if (headerHex.startsWith('89504E47')) mimeType = 'image/png'
   else if (headerHex.startsWith('52494646')) mimeType = 'image/webp'
 
-  if (mimeType === 'application/pdf') {
-    const pdf = require('pdf-parse/lib/pdf-parse.js') as (buf: Buffer) => Promise<{ text: string }>
-    const parsed = await pdf(buffer)
-    return await extractReceiptDataFromText(parsed?.text || '')
-  }
-
-  return await extractReceiptData(buffer.toString('base64'), mimeType)
+  return await extractReceiptDataLocally(buffer, mimeType)
 }
 
 export async function GET(request: NextRequest) {
