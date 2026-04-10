@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { X, AlertCircle, ClipboardList, Trash2 } from 'lucide-react'
+import { X, AlertCircle, ClipboardList, Trash2, CheckCircle2, Clock, ShieldCheck, BadgeDollarSign } from 'lucide-react'
 
 export default function MyClaimsPage() {
   const [claims, setClaims] = useState<any[]>([])
@@ -174,6 +174,53 @@ export default function MyClaimsPage() {
                       <span className="font-medium capitalize text-zinc-900 dark:text-zinc-100">{selectedClaim.category}</span>
                     </div>
                   </div>
+                </div>
+
+                {/* Status Timeline */}
+                <div>
+                  <h3 className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-3">Claim Progress</h3>
+                  {(() => {
+                    const status = selectedClaim.status
+                    const aiVerdict = selectedClaim.ai_verdict
+                    const adminVerdict = selectedClaim.admin_verdict
+
+                    const steps = [
+                      { label: 'Submitted', icon: ClipboardList, done: true },
+                      { label: 'AI Reviewed', icon: ShieldCheck, done: !!aiVerdict },
+                      { label: 'Admin Review', icon: Clock, done: !!adminVerdict, active: !adminVerdict && !!aiVerdict },
+                      { label: 'Paid / Closed', icon: BadgeDollarSign, done: adminVerdict === 'approved' || status === 'approved' },
+                    ]
+
+                    return (
+                      <div className="flex items-start gap-0">
+                        {steps.map((step, idx) => {
+                          const Icon = step.icon
+                          const isLast = idx === steps.length - 1
+                          return (
+                            <div key={step.label} className="flex flex-col items-center flex-1">
+                              <div className="flex items-center w-full">
+                                <div className={`w-7 h-7 rounded-full flex items-center justify-center border-2 shrink-0 ${
+                                  step.done ? 'bg-emerald-500 border-emerald-500' :
+                                  step.active ? 'bg-amber-400 border-amber-400' :
+                                  'bg-zinc-100 border-zinc-300 dark:bg-zinc-800 dark:border-zinc-600'
+                                }`}>
+                                  <Icon className={`w-3.5 h-3.5 ${ step.done || step.active ? 'text-white' : 'text-zinc-400' }`} />
+                                </div>
+                                {!isLast && (
+                                  <div className={`h-0.5 flex-1 ${ step.done ? 'bg-emerald-400' : 'bg-zinc-200 dark:bg-zinc-700' }`} />
+                                )}
+                              </div>
+                              <p className={`text-xs mt-1.5 text-center leading-tight ${
+                                step.done ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
+                                : step.active ? 'text-amber-600 dark:text-amber-400 font-semibold'
+                                : 'text-zinc-400'
+                              }`}>{step.label}</p>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })()}
                 </div>
 
                 <div>

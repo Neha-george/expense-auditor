@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-import { Wallet, Activity, ClipboardCheck, AlertCircle } from 'lucide-react'
+import { Wallet, Activity, ClipboardCheck, AlertCircle, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 
 export default function EmployeeDashboard() {
   const [metrics, setMetrics] = useState({
@@ -13,6 +13,7 @@ export default function EmployeeDashboard() {
     pendingCount: 0
   })
   const [chartData, setChartData] = useState<any[]>([])
+  const [projections, setProjections] = useState<{ name: string; spent: number; projected: number; limit: number; currency: string }[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -95,6 +96,22 @@ export default function EmployeeDashboard() {
       })).filter(d => d.Limit > 0 || d.Spent > 0) // Only show relevant categories
 
       setChartData(data)
+
+      // ── Month-end Spend Projection ────────────────
+      const now = new Date()
+      const daysElapsed = now.getDate()
+      const totalDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+      const projList = allCategories
+        .map(cat => {
+          const { spend, limit } = categoryMap[cat]
+          if (limit === 0) return null
+          const dailyRate = daysElapsed > 0 ? spend / daysElapsed : 0
+          const projected = Math.round(dailyRate * totalDays)
+          return { name: cat.charAt(0).toUpperCase() + cat.slice(1), spent: spend, projected, limit, currency: 'INR' }
+        })
+        .filter(Boolean) as typeof projections
+      setProjections(projList)
+
       setLoading(false)
     }
 
@@ -175,6 +192,51 @@ export default function EmployeeDashboard() {
           </div>
         )}
       </div>
+
+      {/* Month-end Spend Projection */}
+      {projections.length > 0 && (
+        <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <h2 className="text-lg font-semibold mb-1 text-zinc-900 dark:text-zinc-100">Month-end Spend Projection</h2>
+          <p className="text-sm text-zinc-500 mb-5">Based on your current daily spend rate — will you breach your cap by month end?</p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {projections.map(p => {
+              const fmt = (v: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: p.currency, maximumFractionDigits: 0 }).format(v)
+              const willExceed = p.projected > p.limit
+              const onTrack = p.projected <= p.limit
+              const noSpend = p.spent === 0
+              return (
+                <div key={p.name} className={`rounded-lg border p-4 ${
+                  noSpend ? 'border-zinc-200 dark:border-zinc-700'
+                  : willExceed ? 'border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/20'
+                  : 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-950/20'
+                }`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold">{p.name}</span>
+                    {noSpend ? (
+                      <Minus className="w-4 h-4 text-zinc-400" />
+                    ) : willExceed ? (
+                      <TrendingUp className="w-4 h-4 text-red-500" />
+                    ) : (
+                      <TrendingDown className="w-4 h-4 text-emerald-500" />
+                    )}
+                  </div>
+                  <p className={`text-lg font-bold ${
+                    noSpend ? 'text-zinc-400'
+                    : willExceed ? 'text-red-700 dark:text-red-400'
+                    : 'text-emerald-700 dark:text-emerald-400'
+                  }`}>
+                    {noSpend ? 'No spend yet' : fmt(p.projected)}
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-1">projected vs {fmt(p.limit)} limit</p>
+                  {!noSpend && willExceed && (
+                    <p className="text-xs font-medium text-red-600 dark:text-red-400 mt-1.5">⚠ Will exceed by {fmt(p.projected - p.limit)}</p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
     </div>
   )

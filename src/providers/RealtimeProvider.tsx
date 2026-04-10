@@ -43,6 +43,21 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     }
   }, [pathname])
 
+  // Register Service Worker for PWA offline support
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
+    navigator.serviceWorker.register('/sw.js').catch(() => {})
+
+    // Listen for the SW telling us to flush the offline queue
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === 'FLUSH_OFFLINE_QUEUE') {
+        window.dispatchEvent(new CustomEvent('policylens:flush-offline-queue'))
+      }
+    }
+    navigator.serviceWorker.addEventListener('message', handler)
+    return () => navigator.serviceWorker.removeEventListener('message', handler)
+  }, [])
+
   const resetCount = () => setNewClaimsCount(0)
 
   return (

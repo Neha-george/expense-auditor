@@ -100,6 +100,7 @@ function SubmitClaimForm() {
   const [manualCategory, setManualCategory] = useState('')
   const [qualityWarning, setQualityWarning] = useState<string | null>(null)
   const [budget, setBudget] = useState<Record<string, { limit: number; spent: number; currency: string }> | null>(null)
+  const [isOnline, setIsOnline] = useState(true)
 
   // Fetch all category budgets once on mount
   useEffect(() => {
@@ -107,6 +108,46 @@ function SubmitClaimForm() {
       .then(r => r.json())
       .then(d => { if (d.budget) setBudget(d.budget) })
       .catch(() => {})
+  }, [])
+
+  // Online/offline detection + queue flush
+  useEffect(() => {
+    const onOnline = () => setIsOnline(true)
+    const onOffline = () => setIsOnline(false)
+    setIsOnline(navigator.onLine)
+    window.addEventListener('online', onOnline)
+    window.addEventListener('offline', onOffline)
+
+    const flushQueue = async () => {
+      const raw = localStorage.getItem('policylens-offline-queue')
+      if (!raw) return
+      const queue: any[] = JSON.parse(raw)
+      if (queue.length === 0) return
+      toast.info(`Syncing ${queue.length} offline claim(s)...`)
+      const remaining: any[] = []
+      for (const item of queue) {
+        try {
+          const fd = new FormData()
+          Object.entries(item).forEach(([k, v]) => fd.append(k, v as string))
+          const res = await fetch('/api/claims/analyze', { method: 'POST', body: fd })
+          if (!res.ok) remaining.push(item)
+          else toast.success('Offline claim synced!')
+        } catch {
+          remaining.push(item)
+        }
+      }
+      if (remaining.length > 0) localStorage.setItem('policylens-offline-queue', JSON.stringify(remaining))
+      else localStorage.removeItem('policylens-offline-queue')
+    }
+
+    window.addEventListener('online', flushQueue)
+    window.addEventListener('policylens:flush-offline-queue', flushQueue as any)
+    return () => {
+      window.removeEventListener('online', onOnline)
+      window.removeEventListener('offline', onOffline)
+      window.removeEventListener('online', flushQueue)
+      window.removeEventListener('policylens:flush-offline-queue', flushQueue as any)
+    }
   }, [])
 
   useEffect(() => {
@@ -182,6 +223,21 @@ function SubmitClaimForm() {
   const handleSubmit = async () => {
     if (!file || purpose.length < 10) return
 
+    // Offline: queue the text fields; receipt file must be re-uploaded when online
+    if (!isOnline) {
+      const queue = JSON.parse(localStorage.getItem('policylens-offline-queue') || '[]')
+      queue.push({
+        business_purpose: purpose,
+        manual_merchant: manualMerchant,
+        manual_amount: manualAmount,
+        manual_category: manualCategory,
+        _queued_at: new Date().toISOString(),
+      })
+      localStorage.setItem('policylens-offline-queue', JSON.stringify(queue))
+      toast.warning('You are offline. Claim details saved. Re-attach receipt & it will auto-sync when you reconnect.')
+      return
+    }
+
     setLoading(true)
     setResult(null)
     setUnreadable(null)
@@ -245,6 +301,13 @@ function SubmitClaimForm() {
         <h1 className="text-3xl font-bold tracking-tight text-zinc-950 dark:text-zinc-50">Submit Claim</h1>
         <p className="text-zinc-500 dark:text-zinc-400">Capture your receipt for AI screening.</p>
       </div>
+
+      {!isOnline && (
+        <div className="flex items-center gap-3 rounded-lg px-4 py-3 bg-amber-50 border border-amber-200 text-amber-800 text-sm dark:bg-amber-950/30 dark:border-amber-900/50 dark:text-amber-300">
+          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+          <span><strong>You are offline.</strong> You can still fill in your claim details and they will be queued automatically. Re-attach your receipt when you reconnect to submit.</span>
+        </div>
+      )}
 
       {resubmitClaim && !result && (
         <div className="p-4 rounded-xl border border-blue-200 bg-blue-50 dark:border-blue-900/30 dark:bg-blue-950/20">
