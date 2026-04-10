@@ -20,8 +20,10 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
   const path = request.nextUrl.pathname
+
+  console.log(`[Middleware] -> Path: ${path} | User ID: ${user?.id} | Auth Error: ${authError?.message}`)
 
   // ── Public / static paths — always allow ──────────────────
   const publicPaths = ['/auth/login', '/auth/register', '/onboarding/request-access']
@@ -30,19 +32,23 @@ export async function middleware(request: NextRequest) {
 
   // ── RULE 1: Must be authenticated ─────────────────────────
   if (!user) {
+    console.log(`[Middleware] -> Redirecting to /auth/login because no user`)
     return NextResponse.redirect(new URL('/auth/login', request.url))
   }
 
   // Fetch profile once — all subsequent guards need it
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('role, organisation_id, onboarding_complete')
     .eq('id', user.id)
     .single()
 
+  console.log(`[Middleware] -> Profile for ${user.id}:`, profile, '| Error:', profileError?.message)
+
   // ── RULE 2: Must belong to an organisation ─────────────────
   // Exception: /onboarding itself is allowed so the user can create/join an org
   if (!profile?.organisation_id && !path.startsWith('/onboarding')) {
+    console.log(`[Middleware] -> Redirecting to /onboarding because no org_id`)
     return NextResponse.redirect(new URL('/onboarding', request.url))
   }
 
@@ -53,12 +59,14 @@ export async function middleware(request: NextRequest) {
     profile?.role === 'admin' &&
     !path.startsWith('/onboarding')
   ) {
+    console.log(`[Middleware] -> Redirecting to /onboarding because admin not complete`)
     return NextResponse.redirect(new URL('/onboarding', request.url))
   }
 
   // ── Already in onboarding but fully set up → exit ──────────
   if (path.startsWith('/onboarding') && profile?.organisation_id && profile?.onboarding_complete) {
     const dest = profile.role === 'admin' ? '/admin/dashboard' : '/employee/submit'
+    console.log(`[Middleware] -> Redirecting to ${dest} because already onboarded`)
     return NextResponse.redirect(new URL(dest, request.url))
   }
 
