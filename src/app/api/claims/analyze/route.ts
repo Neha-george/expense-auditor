@@ -172,70 +172,78 @@ export async function POST(request: NextRequest) {
     let extracted: any = null
 
     const hasCoreFields = (value: any) => {
-      return Boolean(value?.merchant) && Number.isFinite(Number(value?.amount)) && Boolean(value?.category)
+      const amt = Number(value?.amount)
+      return (
+        Boolean(value?.merchant) &&
+        value.merchant !== 'Unknown Merchant' &&
+        value.merchant !== 'Unknown' &&
+        Number.isFinite(amt) &&
+        amt > 0 &&
+        Boolean(value?.category)
+      )
     }
 
-    const tryPdfTextExtraction = async () => {
+    const tryGeminiExtraction = async () => {
       try {
-        const pdf = require('pdf-parse/lib/pdf-parse.js') as (buf: Buffer) => Promise<{ text: string }>
-        const parsed = await pdf(buffer)
-        if (!parsed?.text?.trim()) return null
-        return await withTimeout(extractReceiptDataFromText(parsed.text), 6000, 'PDF text extraction')
-      } catch (pdfError: any) {
-        console.warn('PDF text extraction failed:', pdfError?.message)
+        const res = await withTimeout(extractReceiptData(imageBase64, actualType), 15000, 'Gemini OCR extraction')
+        console.log('[Gemini Result]', JSON.stringify(res))
+        if (res && (hasCoreFields(res) || res.confidence === 'high')) return res
+        if (res) console.warn('[Gemini] Result incomplete, seeking fallback...')
+      } catch (e) {
+        console.warn('[Gemini] Primary extraction failed/timeout:', e.message)
+      }
+      return null
+    }
+
+    const tryLocalExtraction = async () => {
+      try {
+        const local = await withTimeout(extractReceiptDataLocally(buffer, actualType), 12000, 'Local receipt extraction')
+        console.log('[Local Result]', JSON.stringify(local))
+        return local
+      } catch (e) {
+        console.warn('[Local] Fallback extraction failed:', e.message)
         return null
       }
     }
 
-    // First pass: fast local extraction to avoid quota/network waits.
-    try {
-      const localExtracted = await withTimeout(extractReceiptDataLocally(buffer, actualType), 12000, 'Local receipt extraction')
-      if (localExtracted?.is_readable) {
-        extracted = { ...localExtracted }
-      }
-    } catch (localErr: any) {
-      console.warn('Local extraction timeout/failure:', localErr?.message)
-    }
+    // 1. Primary Attempt: Gemini (High accuracy, 15s timeout)
+    extracted = await tryGeminiExtraction()
 
-    // Prefer text extraction for PDFs because image OCR on PDFs is less reliable.
+    // 2. Special Case: PDF text extraction (Highest accuracy for text-based PDFs)
     if (actualType === 'application/pdf' && !hasCoreFields(extracted)) {
-      extracted = await tryPdfTextExtraction()
-    }
-
-    if (!hasCoreFields(extracted)) {
       try {
-        extracted = await withTimeout(extractReceiptData(imageBase64, actualType), 6000, 'Receipt OCR extraction')
-      } catch (e1: any) {
-        console.warn('OCR extraction failed:', e1.message)
-      }
-    }
-
-    if (
-      extracted &&
-      actualType !== 'application/pdf' &&
-      (!hasCoreFields(extracted) || extracted?.confidence === 'low')
-    ) {
-      try {
-        const bestEffort = await withTimeout(extractReceiptDataBestEffort(imageBase64, actualType), 6000, 'Best-effort OCR extraction')
-        if (bestEffort && hasCoreFields(bestEffort)) {
-          extracted = bestEffort
+        const pdf = require('pdf-parse/lib/pdf-parse.js') as (buf: Buffer) => Promise<{ text: string }>
+        const parsed = await pdf(buffer)
+        if (parsed?.text?.trim()) {
+          const textRes = await withTimeout(extractReceiptDataFromText(parsed.text), 8000, 'PDF text extraction')
+          if (hasCoreFields(textRes)) {
+            console.log('[PDF Text Result] Success')
+            extracted = textRes
+          }
         }
-      } catch (bestEffortErr: any) {
-        console.warn('Best-effort OCR fallback failed:', bestEffortErr?.message)
+      } catch (pdfErr) {
+        console.warn('[PDF Text] Fallback failed:', pdfErr.message)
       }
     }
 
-    if ((!extracted || !hasCoreFields(extracted)) && actualType === 'application/pdf') {
-      const textExtracted = await tryPdfTextExtraction()
-      if (textExtracted) extracted = textExtracted
+    // 3. Fallback Attempt: Best Effort Gemini (if first pass was weak or failed)
+    if (!hasCoreFields(extracted) && actualType !== 'application/pdf') {
+      try {
+        const bestEffort = await withTimeout(extractReceiptDataBestEffort(imageBase64, actualType), 15000, 'Gemini best-effort')
+        console.log('[Gemini Best-Effort Result]', JSON.stringify(bestEffort))
+        if (hasCoreFields(bestEffort)) extracted = bestEffort
+      } catch (beErr) {
+        console.warn('[Gemini Best-Effort] Failed/timeout:', beErr.message)
+      }
     }
 
-    if (!extracted || !hasCoreFields(extracted)) {
-      const localExtracted = await extractReceiptDataLocally(buffer, actualType)
-      if (localExtracted?.is_readable) {
-        extracted = {
-          ...extracted,
-          ...localExtracted,
+    // 4. Final Fallback: Local OCR (Tesseract)
+    if (!hasCoreFields(extracted)) {
+      const localRes = await tryLocalExtraction()
+      if (localRes?.is_readable) {
+        // Only override if local actually found something useful or if we have nothing at all
+        if (!extracted || hasCoreFields(localRes)) {
+          extracted = { ...extracted, ...localRes }
         }
       }
     }

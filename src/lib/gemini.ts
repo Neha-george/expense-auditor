@@ -5,8 +5,12 @@ import { join } from 'path'
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null
-const visionModel = genAI?.getGenerativeModel({ model: 'gemini-2.0-flash' })
+const VISION_MODEL_CANDIDATES = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'] as const
 const ENABLE_TESSERACT_OCR = process.env.ENABLE_TESSERACT_OCR !== 'false'
+
+function getVisionModel(modelName: string) {
+  return genAI?.getGenerativeModel({ model: modelName })
+}
 
 let geminiBlockedUntil = 0
 
@@ -44,7 +48,7 @@ function markGeminiBackoff(err: unknown) {
 }
 
 function getGeminiUnavailableReason(): string | null {
-  if (!visionModel) return 'Gemini is not configured.'
+  if (!genAI) return 'Gemini is not configured.'
   if (Date.now() < geminiBlockedUntil) return 'Gemini is temporarily unavailable due to quota limits.'
   return null
 }
@@ -53,14 +57,33 @@ async function generateContentWithBackoff(input: any) {
   const unavailableReason = getGeminiUnavailableReason()
   if (unavailableReason) throw new Error(unavailableReason)
 
-  try {
-    return await visionModel!.generateContent(input)
-  } catch (err) {
-    if (isQuotaOrRateLimitError(err)) {
-      markGeminiBackoff(err)
+  let lastError: unknown
+
+  for (const modelName of VISION_MODEL_CANDIDATES) {
+    try {
+      const model = getVisionModel(modelName)
+      if (!model) continue
+      
+      const result = await model.generateContent(input)
+      if (result) return result
+    } catch (err) {
+      lastError = err
+      console.warn(`[Gemini] Model ${modelName} failed or unavailable:`, errorText(err))
+      
+      if (isQuotaOrRateLimitError(err)) {
+        markGeminiBackoff(err)
+        // If it's a quota error, trying other models might not help if they share the same quota,
+        // but often different models have different quotas. We'll try the next one once.
+        continue
+      }
+      
+      // For other errors (like overloaded), try the next model immediately.
+      continue
     }
-    throw err
   }
+
+  const msg = errorText(lastError)
+  throw new Error(`All Gemini vision models failed. Last error: ${msg}`)
 }
 
 // Embedding model names can vary by API version/account rollout.
@@ -138,6 +161,7 @@ If is_readable is true, do NOT leave merchant/amount/category empty. Infer best-
 Use INR when currency is unclear.
 Return ONLY the JSON. No explanation, no markdown, no code blocks.`
 
+  console.log(`[Gemini] Attempting OCR extraction...`)
   const result = await generateContentWithBackoff([
     { inlineData: { data: imageBase64, mimeType } },
     prompt,
@@ -152,23 +176,10 @@ Return ONLY the JSON. No explanation, no markdown, no code blocks.`
 // Fallback parser for images where primary OCR parser returns weak/missing fields.
 export async function extractReceiptDataBestEffort(imageBase64: string, mimeType: string) {
   const prompt = `Extract receipt details from this image and return ONLY valid JSON:
-{
-  "is_readable": true or false,
-  "merchant": "string or null",
-  "amount": number or null,
-  "currency": "3-letter currency code or INR",
-  "date": "YYYY-MM-DD or null",
-  "category": one of: "meals","travel","accommodation","transport","office","entertainment","other",
-  "confidence": "high", "medium", or "low"
-}
-
-Rules:
-- If text is readable, infer merchant/amount/category with best effort (avoid nulls for these three fields).
-- If amount appears as integer/decimal, return numeric only.
-- Use INR when currency is missing/ambiguous.
-- If truly unreadable, set is_readable to false and others null.
+...
 - Return JSON only.`
 
+  console.log(`[Gemini] Attempting best-effort extraction...`)
   const result = await generateContentWithBackoff([
     { inlineData: { data: imageBase64, mimeType } },
     prompt,
@@ -278,12 +289,12 @@ function parseDateFromText(text: string): string | null {
 
 function inferCategory(text: string): LocalReceipt['category'] {
   const t = text.toLowerCase()
-  if (/(restaurant|dinner|lunch|cafe|food|meal)/.test(t)) return 'meals'
-  if (/(flight|airline|boarding|train|trip|taxi|uber|ola|travel)/.test(t)) return 'travel'
-  if (/(hotel|stay|room|lodging|accommodation)/.test(t)) return 'accommodation'
-  if (/(metro|bus|fuel|petrol|diesel|cab|transport)/.test(t)) return 'transport'
-  if (/(stationery|printer|office|software|subscription|supplies)/.test(t)) return 'office'
-  if (/(movie|event|entertainment|club|tickets)/.test(t)) return 'entertainment'
+  if (/\b(restaurant|dinner|lunch|cafe|food|meal)\b/.test(t)) return 'meals'
+  if (/\b(flight|airline|boarding|train|trip|taxi|uber|ola|travel)\b/.test(t)) return 'travel'
+  if (/\b(hotel|stay|room|lodging|accommodation)\b/.test(t)) return 'accommodation'
+  if (/\b(metro|bus|fuel|petrol|diesel|cab|transport)\b/.test(t)) return 'transport'
+  if (/\b(stationery|printer|office|software|subscription|supplies)\b/.test(t)) return 'office'
+  if (/\b(movie|event|entertainment|club|tickets)\b/.test(t)) return 'entertainment'
   return 'other'
 }
 
@@ -299,7 +310,7 @@ function parseReceiptTextHeuristics(receiptText: string): LocalReceipt {
   const merchantBlacklist = /(invoice|tax|bill|receipt|gst|customer copy|phone|table|server|cash|card|subtotal|total|thank you)/i
   const merchant = lines.find((line) => line.length >= 3 && line.length <= 60 && !merchantBlacklist.test(line)) || null
 
-  const totalMatch = text.match(/(?:grand\s*total|total\s*amount|amount\s*due|net\s*amount|payable|bill\s*amount)[^\d₹inr]{0,25}(?:₹|rs\.?|inr)?\s*([0-9][0-9,]*\.?\d{0,2})/i)
+  const totalMatch = text.match(/(?:grand\s*total|total\s*amount|amount\s*due|net\s*amount|payable|bill\s*amount|\btotal\b)[^\d₹inr]{0,25}(?:₹|rs\.?|inr)?\s*([0-9][0-9,]*\.?\d{0,2})/i)
   const currencyMatchAll = [...text.matchAll(/(?:₹|rs\.?|inr|usd|\$|eur|gbp)\s*([0-9][0-9,]*\.?\d{0,2})/gi)]
   const allNumericCurrencyAmounts = currencyMatchAll
     .map((m) => parseAmount(m[1]))
