@@ -3,6 +3,8 @@ import { createAdminSupabase, createServerSupabase } from '@/lib/supabase-server
 import { extractReceiptData, extractReceiptDataBestEffort, extractReceiptDataFromText, extractReceiptDataLocally, generateVerdict, embedText } from '@/lib/gemini'
 import { sendEmail, resubmissionTemplate, verdictTemplate, submissionConfirmationTemplate, adminFlaggedAlertTemplate } from '@/lib/email'
 
+export const maxDuration = 60
+
 const MAX_SIZE = 10 * 1024 * 1024 // 10MB
 
 async function withTimeout<T>(task: Promise<T>, ms: number, label: string): Promise<T> {
@@ -185,11 +187,11 @@ export async function POST(request: NextRequest) {
 
     const tryGeminiExtraction = async () => {
       try {
-        const res = await withTimeout(extractReceiptData(imageBase64, actualType), 15000, 'Gemini OCR extraction')
+        const res = await withTimeout(extractReceiptData(imageBase64, actualType), 45000, 'Gemini OCR extraction')
         console.log('[Gemini Result]', JSON.stringify(res))
         if (res && (hasCoreFields(res) || res.confidence === 'high')) return res
         if (res) console.warn('[Gemini] Result incomplete, seeking fallback...')
-      } catch (e) {
+      } catch (e: any) {
         console.warn('[Gemini] Primary extraction failed/timeout:', e.message)
       }
       return null
@@ -200,7 +202,7 @@ export async function POST(request: NextRequest) {
         const local = await withTimeout(extractReceiptDataLocally(buffer, actualType), 12000, 'Local receipt extraction')
         console.log('[Local Result]', JSON.stringify(local))
         return local
-      } catch (e) {
+      } catch (e: any) {
         console.warn('[Local] Fallback extraction failed:', e.message)
         return null
       }
@@ -221,7 +223,7 @@ export async function POST(request: NextRequest) {
             extracted = textRes
           }
         }
-      } catch (pdfErr) {
+      } catch (pdfErr: any) {
         console.warn('[PDF Text] Fallback failed:', pdfErr.message)
       }
     }
@@ -229,10 +231,10 @@ export async function POST(request: NextRequest) {
     // 3. Fallback Attempt: Best Effort Gemini (if first pass was weak or failed)
     if (!hasCoreFields(extracted) && actualType !== 'application/pdf') {
       try {
-        const bestEffort = await withTimeout(extractReceiptDataBestEffort(imageBase64, actualType), 15000, 'Gemini best-effort')
+        const bestEffort = await withTimeout(extractReceiptDataBestEffort(imageBase64, actualType), 45000, 'Gemini best-effort')
         console.log('[Gemini Best-Effort Result]', JSON.stringify(bestEffort))
         if (hasCoreFields(bestEffort)) extracted = bestEffort
-      } catch (beErr) {
+      } catch (beErr: any) {
         console.warn('[Gemini Best-Effort] Failed/timeout:', beErr.message)
       }
     }

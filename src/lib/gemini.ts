@@ -176,7 +176,21 @@ Return ONLY the JSON. No explanation, no markdown, no code blocks.`
 // Fallback parser for images where primary OCR parser returns weak/missing fields.
 export async function extractReceiptDataBestEffort(imageBase64: string, mimeType: string) {
   const prompt = `Extract receipt details from this image and return ONLY valid JSON:
-...
+{
+  "is_readable": true or false,
+  "merchant": "string or null",
+  "amount": number or null,
+  "currency": "3-letter currency code or INR",
+  "date": "YYYY-MM-DD or null",
+  "category": one of: "meals","travel","accommodation","transport","office","entertainment","other",
+  "confidence": "high", "medium", or "low"
+}
+
+Rules:
+- If text is readable, infer merchant/amount/category with best effort (avoid nulls for these three fields).
+- If amount appears as integer/decimal, return numeric only.
+- Use INR when currency is missing/ambiguous.
+- If truly unreadable, set is_readable to false and others null.
 - Return JSON only.`
 
   console.log(`[Gemini] Attempting best-effort extraction...`)
