@@ -12,8 +12,6 @@ function getVisionModel(modelName: string) {
   return genAI?.getGenerativeModel({ model: modelName })
 }
 
-let geminiBlockedUntil = 0
-
 function extractRetryDelayMs(text: string): number | null {
   const retryMatch = text.match(/retryDelay"\s*:\s*"(\d+)s"/i) || text.match(/retry in\s+([\d.]+)s/i)
   if (!retryMatch) return null
@@ -38,24 +36,8 @@ function isQuotaOrRateLimitError(err: unknown): boolean {
   return lower.includes('429') || lower.includes('too many requests') || lower.includes('quota') || lower.includes('rate limit')
 }
 
-function markGeminiBackoff(err: unknown) {
-  const msg = errorText(err)
-  const parsedRetry = extractRetryDelayMs(msg)
-  const minBackoffMs = 2 * 60 * 1000
-  const maxBackoffMs = 15 * 60 * 1000
-  const backoffMs = Math.max(minBackoffMs, Math.min(maxBackoffMs, parsedRetry ?? minBackoffMs))
-  geminiBlockedUntil = Date.now() + backoffMs
-}
-
-function getGeminiUnavailableReason(): string | null {
-  if (!genAI) return 'Gemini is not configured.'
-  if (Date.now() < geminiBlockedUntil) return 'Gemini is temporarily unavailable due to quota limits.'
-  return null
-}
-
 export async function generateContentWithBackoff(input: any) {
-  const unavailableReason = getGeminiUnavailableReason()
-  if (unavailableReason) throw new Error(unavailableReason)
+  if (!genAI) throw new Error('Gemini is not configured.')
 
   let lastError: unknown
 
@@ -71,11 +53,10 @@ export async function generateContentWithBackoff(input: any) {
       console.warn(`[Gemini] Model ${modelName} failed or unavailable:`, errorText(err))
       
       if (isQuotaOrRateLimitError(err)) {
-        markGeminiBackoff(err)
-        // If it's a quota error, trying other models might not help if they share the same quota,
-        // but often different models have different quotas. We'll try the next one once.
+        // If it's a quota error, we must try the next model because their quotas are isolated.
         continue
       }
+
       
       // For other errors (like overloaded), try the next model immediately.
       continue
@@ -591,8 +572,7 @@ Rules:
 
 // Embed a text string → 768-dimension vector
 export async function embedText(text: string): Promise<number[]> {
-  const unavailableReason = getGeminiUnavailableReason()
-  if (unavailableReason) {
+  if (!genAI) {
     return localFallbackEmbedding(text)
   }
 
@@ -616,9 +596,9 @@ export async function embedText(text: string): Promise<number[]> {
       throw new Error(`Empty embedding returned for model ${modelName}`)
     } catch (err) {
       lastError = err
+      console.warn(`[Gemini] Embedding Model ${modelName} failed or unavailable:`, errorText(err))
       if (isQuotaOrRateLimitError(err)) {
-        markGeminiBackoff(err)
-        break
+        continue
       }
     }
   }
