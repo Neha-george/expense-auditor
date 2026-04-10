@@ -2,6 +2,32 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabase } from '@/lib/supabase-server'
 import { generatePolicyClause } from '@/lib/gemini'
 
+function isQuotaOrRateLimitError(err: unknown) {
+  const msg = err instanceof Error ? err.message : String(err || '')
+  const lower = msg.toLowerCase()
+  return lower.includes('429') || lower.includes('too many requests') || lower.includes('quota') || lower.includes('rate limit')
+}
+
+function buildLocalClauseDraft(params: {
+  title: string
+  why: string
+  organisationName?: string | null
+  tone: 'strict' | 'balanced' | 'lenient'
+}) {
+  const org = params.organisationName || 'the organisation'
+  const tonePrefix = params.tone === 'strict'
+    ? 'must'
+    : params.tone === 'lenient'
+    ? 'should'
+    : 'must'
+
+  return {
+    title: params.title,
+    clause_text: `For ${org}, expenses under "${params.title}" ${tonePrefix} include a clear business purpose, valid receipt evidence, and required approver sign-off before reimbursement. Claims missing these requirements ${tonePrefix} be flagged for manual review. Where limits or eligibility are unclear, the claim ${tonePrefix} be escalated to the finance/admin reviewer with supporting notes.`,
+    rationale: `Fallback draft generated because AI quota is currently unavailable. This clause addresses: ${params.why}`,
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createServerSupabase()
@@ -35,16 +61,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'title and why are required' }, { status: 400 })
     }
 
-    const clause = await generatePolicyClause({
-      recommendationTitle: title,
-      recommendationWhy: why,
-      organisationName: org?.name || null,
-      tone,
-    })
+    try {
+      const clause = await generatePolicyClause({
+        recommendationTitle: title,
+        recommendationWhy: why,
+        organisationName: org?.name || null,
+        tone,
+      })
 
-    return NextResponse.json({ success: true, clause })
+      return NextResponse.json({ success: true, clause, source: 'ai' })
+    } catch (genErr: any) {
+      if (isQuotaOrRateLimitError(genErr)) {
+        const fallbackClause = buildLocalClauseDraft({
+          title,
+          why,
+          organisationName: org?.name || null,
+          tone,
+        })
+
+        return NextResponse.json({
+          success: true,
+          clause: fallbackClause,
+          source: 'fallback',
+          warning: 'AI quota exceeded. Generated a local draft instead.',
+        })
+      }
+      throw genErr
+    }
   } catch (err: any) {
     console.error('Generate clause error:', err)
-    return NextResponse.json({ error: err.message || 'Failed to generate clause' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to generate clause. Please retry shortly.' }, { status: 500 })
   }
 }

@@ -185,9 +185,15 @@ export default function AdminPoliciesPage() {
       if (!res.ok) throw new Error(data.error || 'Clause generation failed')
 
       setGeneratedClauses(prev => ({ ...prev, [key]: data.clause }))
-      toast.success('Draft clause generated')
+      if (data.source === 'fallback') {
+        toast.warning(data.warning || 'AI quota unavailable. Generated local draft clause.')
+      } else {
+        toast.success('Draft clause generated')
+      }
     } catch (err: any) {
-      toast.error(err.message)
+      const msg = typeof err?.message === 'string' ? err.message : 'Clause generation failed. Please retry.'
+      const cleanMsg = msg.length > 180 ? 'Clause generation failed due to provider limits. Please retry shortly.' : msg
+      toast.error(cleanMsg)
     } finally {
       setGeneratingClauseKey(null)
     }
