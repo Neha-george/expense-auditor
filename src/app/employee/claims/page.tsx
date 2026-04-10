@@ -2,13 +2,32 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { X, AlertCircle, ClipboardList } from 'lucide-react'
+import { X, AlertCircle, ClipboardList, Trash2 } from 'lucide-react'
 
 export default function MyClaimsPage() {
   const [claims, setClaims] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedClaim, setSelectedClaim] = useState<any>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
   const router = useRouter()
+
+  const handleDeleteClaim = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this claim? This action cannot be undone.')) return
+    
+    setIsDeleting(true)
+    try {
+      const res = await fetch(`/api/claims/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete claim')
+      
+      setClaims(prev => prev.filter(c => c.id !== id))
+      if (selectedClaim?.id === id) setSelectedClaim(null)
+    } catch (err) {
+      console.error(err)
+      alert('Error deleting claim. Please try again.')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
 
   useEffect(() => {
     fetch('/api/claims')
@@ -219,6 +238,13 @@ export default function MyClaimsPage() {
                       Resubmit Correction
                     </button>
                   )}
+                  <button
+                     onClick={() => handleDeleteClaim(selectedClaim.id)}
+                     disabled={isDeleting}
+                     className="ml-2 px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-md text-sm font-medium hover:bg-red-100 disabled:opacity-50 dark:bg-red-900/20 dark:text-red-400 dark:border-red-900/50 dark:hover:bg-red-900/40"
+                   >
+                     {isDeleting ? 'Deleting...' : 'Delete'}
+                   </button>
                </div>
                <button onClick={() => setSelectedClaim(null)} className="px-4 py-2 border border-zinc-300 rounded-md bg-white hover:bg-zinc-50 text-sm font-medium dark:bg-zinc-900 dark:border-zinc-700 dark:hover:bg-zinc-800">
                  Close
