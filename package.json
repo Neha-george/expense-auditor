@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "seed:demo": "node scripts/seed_demo_data.js"
   },
   "dependencies": {
     "@ducanh2912/next-pwa": "^10.2.9",
