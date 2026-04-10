@@ -228,9 +228,7 @@ create policy "admins manage org claims"
   on claims for all
   using (
     organisation_id = auth_user_org_id()
-    and exists (
-      select 1 from profiles where id = auth.uid() and role = 'admin'
-    )
+    and get_auth_user_role() = 'admin'
   );
 
 -- ── policy_documents ───────────────────────────────────────
@@ -238,9 +236,7 @@ create policy "admins manage org policies"
   on policy_documents for all
   using (
     organisation_id = auth_user_org_id()
-    and exists (
-      select 1 from profiles where id = auth.uid() and role = 'admin'
-    )
+    and get_auth_user_role() = 'admin'
   );
 
 -- ── policy_chunks ──────────────────────────────────────────
@@ -248,9 +244,7 @@ create policy "admins manage org chunks"
   on policy_chunks for all
   using (
     organisation_id = auth_user_org_id()
-    and exists (
-      select 1 from profiles where id = auth.uid() and role = 'admin'
-    )
+    and get_auth_user_role() = 'admin'
   );
 
 -- ── request_logs ───────────────────────────────────────────
@@ -338,7 +332,7 @@ create policy "admins manage spend limits"
   on spend_limits for all
   using (
     organisation_id = auth_user_org_id()
-    and exists (select 1 from profiles where id = auth.uid() and role = 'admin')
+    and get_auth_user_role() = 'admin'
   );
 
 create policy "members view spend limits"
@@ -376,7 +370,7 @@ create policy "admins manage statistical baselines"
   on statistical_baselines for all
   using (
     organisation_id = auth_user_org_id()
-    and exists (select 1 from profiles where id = auth.uid() and role = 'admin')
+    and get_auth_user_role() = 'admin'
   );
 
 create policy "members view statistical baselines"
@@ -405,7 +399,7 @@ create policy "admins see audit logs"
   on audit_logs for select
   using (
     organisation_id = auth_user_org_id()
-    and exists (select 1 from profiles where id = auth.uid() and role = 'admin')
+    and get_auth_user_role() = 'admin'
   );
 
 -- Deny updates/deletes securely
@@ -486,7 +480,7 @@ create policy "admins manage verdict_feedback"
   on verdict_feedback for all
   using (
     organisation_id = auth_user_org_id()
-    and exists (select 1 from profiles where id = auth.uid() and role = 'admin')
+    and get_auth_user_role() = 'admin'
   );
 
 create index idx_verdict_feedback_lookup on verdict_feedback (organisation_id, category, amount_range, created_at desc);
@@ -511,7 +505,7 @@ create policy "admins manage gl mappings"
   on gl_account_mappings for all
   using (
     organisation_id = auth_user_org_id()
-    and exists (select 1 from profiles where id = auth.uid() and role = 'admin')
+    and get_auth_user_role() = 'admin'
   );
 
 create policy "members view gl mappings"
