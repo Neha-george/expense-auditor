@@ -18,9 +18,8 @@ export const maxDuration = 60
 
 export async function POST(request: NextRequest) {
   try {
-    // pdf-parse is a CJS module — in Next.js ESM context the real fn is on .default
-    const pdfModule = require('pdf-parse')
-    const pdf = (pdfModule.default || pdfModule) as (buf: Buffer) => Promise<{ text: string }>
+    // pdf-parse v1.1.1 exports the parse function directly
+    const pdf = require('pdf-parse') as (buf: Buffer) => Promise<{ text: string }>
     const supabase = await createServerSupabase()
     const admin = createAdminSupabase()
 
