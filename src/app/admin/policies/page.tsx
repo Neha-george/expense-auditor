@@ -24,6 +24,7 @@ export default function AdminPoliciesPage() {
   const [file, setFile] = useState<File | null>(null)
   const [policyName, setPolicyName] = useState('')
   const [generatingClauseKey, setGeneratingClauseKey] = useState<string | null>(null)
+  const [busyPolicyId, setBusyPolicyId] = useState<string | null>(null)
   const [generatedClauses, setGeneratedClauses] = useState<Record<string, { title: string; clause_text: string; rationale: string }>>({})
 
   const fetchPolicies = async () => {
@@ -84,6 +85,7 @@ export default function AdminPoliciesPage() {
 
   const handleActivate = async (id: string, name: string) => {
     try {
+      setBusyPolicyId(id)
       const res = await fetch(`/api/policies/${id}/activate`, {
         method: 'PATCH',
       })
@@ -95,6 +97,45 @@ export default function AdminPoliciesPage() {
       fetchPolicies()
     } catch (err: any) {
       toast.error(err.message)
+    } finally {
+      setBusyPolicyId(null)
+    }
+  }
+
+  const handleViewPolicy = async (id: string, name: string) => {
+    try {
+      setBusyPolicyId(id)
+      const res = await fetch(`/api/policies/${id}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Unable to open policy')
+
+      window.open(data.url, '_blank', 'noopener,noreferrer')
+      toast.success(`Opened ${name}`)
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setBusyPolicyId(null)
+    }
+  }
+
+  const handleDeletePolicy = async (id: string, name: string) => {
+    const confirmed = window.confirm(`Delete policy "${name}"? This cannot be undone.`)
+    if (!confirmed) return
+
+    try {
+      setBusyPolicyId(id)
+      const res = await fetch(`/api/policies/${id}`, {
+        method: 'DELETE',
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Delete failed')
+
+      toast.success(`${name} deleted`)
+      fetchPolicies()
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setBusyPolicyId(null)
     }
   }
 
@@ -365,14 +406,31 @@ export default function AdminPoliciesPage() {
                          <td className="px-6 py-4">{policy.policy_chunks[0]?.count || 0}</td>
                          <td className="px-6 py-4">{new Date(policy.created_at).toLocaleDateString()}</td>
                          <td className="px-6 py-4 text-right">
-                           {!policy.is_active && (
+                           <div className="flex items-center justify-end gap-2">
                              <button
-                               onClick={() => handleActivate(policy.id, policy.name)}
-                               className="text-blue-600 hover:text-blue-700 font-medium text-xs rounded border border-blue-200 hover:bg-blue-50 px-3 py-1.5 transition dark:border-blue-900 dark:text-blue-400 dark:hover:bg-blue-900/30"
+                               onClick={() => handleViewPolicy(policy.id, policy.name)}
+                               disabled={busyPolicyId === policy.id}
+                               className="text-zinc-700 hover:text-zinc-900 font-medium text-xs rounded border border-zinc-300 hover:bg-zinc-100 px-3 py-1.5 transition disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
                              >
-                               Activate
+                               View
                              </button>
-                           )}
+                             {!policy.is_active && (
+                               <button
+                                 onClick={() => handleActivate(policy.id, policy.name)}
+                                 disabled={busyPolicyId === policy.id}
+                                 className="text-blue-600 hover:text-blue-700 font-medium text-xs rounded border border-blue-200 hover:bg-blue-50 px-3 py-1.5 transition disabled:opacity-60 dark:border-blue-900 dark:text-blue-400 dark:hover:bg-blue-900/30"
+                               >
+                                 Activate
+                               </button>
+                             )}
+                             <button
+                               onClick={() => handleDeletePolicy(policy.id, policy.name)}
+                               disabled={busyPolicyId === policy.id}
+                               className="text-red-600 hover:text-red-700 font-medium text-xs rounded border border-red-200 hover:bg-red-50 px-3 py-1.5 transition disabled:opacity-60 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-900/30"
+                             >
+                               Delete
+                             </button>
+                           </div>
                          </td>
                        </tr>
                      ))
