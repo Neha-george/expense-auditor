@@ -36,7 +36,7 @@ export default function AdminDashboardPage() {
       // KPIs
       const total = claims.length
       const flagged = claims.filter(c => c.status === 'flagged').length
-      const approved = claims.filter(c => c.status === 'approved' && !c.admin_verdict).length // auto approved
+      const approved = claims.filter(c => c.status === 'approved' && c.ai_verdict === 'approved').length // truly auto-approved by AI
       const autoApprovedPct = total > 0 ? Math.round((approved / total) * 100) : 0
       const leakagePrevented = claims
         .filter(c => c.status === 'rejected')

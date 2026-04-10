@@ -170,7 +170,7 @@ async function seedOrg(orgId, admins, employees) {
   }
 
   const employeePool = employees.length > 0 ? employees : admins
-  const statuses = ['approved', 'flagged', 'rejected', 'pending']
+  const aiVerdicts = ['approved', 'flagged', 'rejected', 'approved']
   const merchants = ['Urban Spice Bistro', 'FastCab', 'SkyRail', 'Office Stationery', 'City Stay Hotel']
   const categories = ['meals', 'transport', 'travel', 'office', 'accommodation']
 
@@ -178,10 +178,11 @@ async function seedOrg(orgId, admins, employees) {
   for (let i = 0; i < employeePool.length; i += 1) {
     const emp = employeePool[i]
     for (let j = 0; j < 4; j += 1) {
-      const status = statuses[j % statuses.length]
+      const aiVerdict = aiVerdicts[j % aiVerdicts.length]
       const cat = categories[j % categories.length]
       const amt = [1200, 850, 5400, 2200, 7800][j % 5]
-      const aiVerdict = status === 'pending' ? 'flagged' : status
+      const isManualOverride = j === 1 // one reviewed override sample per employee
+      const status = isManualOverride ? 'approved' : aiVerdict
 
       claimRows.push({
         organisation_id: orgId,
@@ -200,12 +201,12 @@ async function seedOrg(orgId, admins, employees) {
         ai_verdict: aiVerdict,
         ai_reason: `Demo AI assessment for ${cat}`,
         policy_reference: 'Demo policy clause reference',
-        admin_verdict: status === 'pending' ? null : status,
-        admin_note: status === 'pending' ? null : `${DEMO_PREFIX} admin review note`,
-        reviewed_by: status === 'pending' ? null : owner.id,
+        admin_verdict: isManualOverride ? 'approved' : null,
+        admin_note: isManualOverride ? `${DEMO_PREFIX} admin override sample` : null,
+        reviewed_by: isManualOverride ? owner.id : null,
         status,
-        confidence: status === 'approved' ? 0.93 : status === 'flagged' ? 0.62 : status === 'rejected' ? 0.9 : 0.55,
-        requires_review: status === 'flagged' || status === 'pending',
+        confidence: aiVerdict === 'approved' ? 0.93 : aiVerdict === 'flagged' ? 0.62 : 0.9,
+        requires_review: status === 'flagged',
         is_duplicate_warning: j === 1,
       })
     }
