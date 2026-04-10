@@ -151,19 +151,32 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // ── Step 2: Embed for vector search ──────────────────────
+    // ── Step 2: Resolve active policies for comparison ───────
+    const { data: activePolicies, error: activePoliciesError } = await supabase
+      .from('policy_documents')
+      .select('id, name')
+      .eq('organisation_id', orgId)
+      .eq('is_active', true)
+
+    if (activePoliciesError) throw activePoliciesError
+
+    const comparedPolicies = (activePolicies || []).map((p: any) => p.name)
+    const activePolicyCount = activePolicies?.length ?? 0
+
+    // ── Step 3: Embed for vector search ──────────────────────
     const searchQuery = `${extracted.category} expense: ${businessPurpose}`
     const queryEmbedding = await embedText(searchQuery)
 
-    // ── Step 3: Org-isolated vector search ───────────────────
+    // ── Step 4: Org-isolated vector search across all active policies ───────
+    const matchCount = Math.min(24, Math.max(4, activePolicyCount * 4))
     const { data: chunks } = await admin.rpc('match_policy_chunks', {
       query_embedding: JSON.stringify(queryEmbedding),
-      match_count: 4,
+      match_count: matchCount,
       p_organisation_id: orgId,         // ← KEY: tenant isolation
     })
     const policyChunks: string[] = chunks?.map((c: any) => c.content) ?? []
 
-    // ── Step 4: Generate verdict ──────────────────────────────
+    // ── Step 5: Generate verdict ──────────────────────────────
     const location = parseLocation(profile?.location)
     const roleDepartment = profile?.department || 'unknown'
     const roleSeniority = profile?.seniority || 'mid'
@@ -362,7 +375,7 @@ export async function POST(request: NextRequest) {
       ;(verdictData as any)._isDuplicate = isDuplicate
     } // end if (policyChunks.length > 0)
 
-    // ── Step 5: Save claim with organisation_id ───────────────
+    // ── Step 6: Save claim with organisation_id ───────────────
     const { data: claim, error: claimError } = await admin
       .from('claims')
       .insert({
@@ -392,7 +405,7 @@ export async function POST(request: NextRequest) {
 
     if (claimError) throw claimError
 
-    // ── Step 6: Fire-and-forget emails ───────────────────────
+    // ── Step 7: Fire-and-forget emails ───────────────────────
     if (profile?.email) {
       if (verdictData.verdict === 'approved' || verdictData.verdict === 'rejected') {
         const amt = Number(extracted.amount || 0)
@@ -427,7 +440,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ success: true, claim, extracted, verdict: verdictData })
+    return NextResponse.json({
+      success: true,
+      claim,
+      extracted,
+      verdict: verdictData,
+      compared_policies: comparedPolicies,
+      policy_chunks_used: policyChunks.length,
+    })
   } catch (err: any) {
     console.error('Analyze error:', err)
     return NextResponse.json({ error: err.message || 'Analysis failed' }, { status: 500 })

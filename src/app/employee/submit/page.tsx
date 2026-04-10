@@ -309,6 +309,12 @@ function SubmitClaimForm() {
                   {result.verdict.verdict}
                 </h3>
                 <p className="mt-2 text-zinc-700 dark:text-zinc-300 font-medium">{result.verdict.reason}</p>
+                {Array.isArray(result.compared_policies) && result.compared_policies.length > 0 && (
+                  <div className="mt-3 text-sm text-zinc-600 dark:text-zinc-300">
+                    <p className="font-medium">Compared Policies:</p>
+                    <p>{result.compared_policies.join(', ')}</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>

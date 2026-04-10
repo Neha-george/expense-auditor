@@ -47,14 +47,6 @@ export async function PATCH(
     if (targetError) return NextResponse.json({ error: targetError.message }, { status: 500 })
     if (!targetPolicy) return NextResponse.json({ error: 'Policy not found' }, { status: 404 })
 
-    // Deactivate ALL policies belonging to THIS org only, then activate the chosen one.
-    const { error: deactivateError } = await admin
-      .from('policy_documents')
-      .update({ is_active: false })
-      .eq('organisation_id', orgId)
-
-    if (deactivateError) return NextResponse.json({ error: deactivateError.message }, { status: 500 })
-
     const { error } = await admin
       .from('policy_documents')
       .update({ is_active: true })
