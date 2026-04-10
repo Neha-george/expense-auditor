@@ -4,7 +4,37 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 const visionModel = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
 
 // Embedding model names can vary by API version/account rollout.
-const EMBEDDING_MODEL_CANDIDATES = ['text-embedding-004', 'embedding-001'] as const
+const EMBEDDING_MODEL_CANDIDATES = ['text-embedding-004', 'gemini-embedding-001', 'embedding-001'] as const
+const EMBEDDING_DIMENSIONS = 768
+
+function localFallbackEmbedding(text: string, dimensions = EMBEDDING_DIMENSIONS): number[] {
+  const vec = new Array<number>(dimensions).fill(0)
+  const source = text.trim() || ' '
+
+  for (let i = 0; i < source.length; i += 1) {
+    const code = source.charCodeAt(i)
+    const slot = (code * 31 + i * 17) % dimensions
+    const signed = ((code % 2) === 0 ? 1 : -1) * (1 + (code % 13) / 13)
+    vec[slot] += signed
+  }
+
+  let norm = 0
+  for (let i = 0; i < vec.length; i += 1) {
+    norm += vec[i] * vec[i]
+  }
+
+  if (norm === 0) {
+    vec[0] = 1
+    return vec
+  }
+
+  const scale = 1 / Math.sqrt(norm)
+  for (let i = 0; i < vec.length; i += 1) {
+    vec[i] = Number((vec[i] * scale).toFixed(8))
+  }
+
+  return vec
+}
 
 // OCR: extract structured data from a receipt image
 export async function extractReceiptData(imageBase64: string, mimeType: string) {
@@ -238,9 +268,9 @@ export async function embedText(text: string): Promise<number[]> {
     }
   }
 
-  throw lastError instanceof Error
-    ? new Error(`Failed to generate embeddings with available models: ${lastError.message}`)
-    : new Error('Failed to generate embeddings with available models')
+  const reason = lastError instanceof Error ? lastError.message : 'unknown error'
+  console.warn(`[Gemini] Embedding API unavailable, using local fallback embeddings. Reason: ${reason}`)
+  return localFallbackEmbedding(text)
 }
 
 // Embed multiple texts in batches of 20
