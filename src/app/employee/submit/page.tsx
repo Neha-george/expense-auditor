@@ -105,12 +105,13 @@ function SubmitClaimForm() {
       const formData = new FormData()
       formData.append('receipt', file)
       formData.append('business_purpose', purpose)
+
+      if (manualMerchant) formData.append('manual_merchant', manualMerchant)
+      if (manualAmount) formData.append('manual_amount', manualAmount)
+      if (manualCategory) formData.append('manual_category', manualCategory)
       
       if (resubmitId) {
         formData.append('parent_claim_id', resubmitId)
-        if (manualMerchant) formData.append('manual_merchant', manualMerchant)
-        if (manualAmount) formData.append('manual_amount', manualAmount)
-        if (manualCategory) formData.append('manual_category', manualCategory)
       }
 
       const res = await fetch('/api/claims/analyze', { method: 'POST', body: formData })
@@ -222,19 +223,40 @@ function SubmitClaimForm() {
                 onChange={(e) => setPurpose(e.target.value)}
               />
               
-              {resubmitId && (
-                <div className="mt-4 space-y-3 pt-4 border-t border-zinc-100 dark:border-zinc-800">
-                   <p className="text-xs text-zinc-500 mb-2">Override Extracted Values (Optional)</p>
-                   <div>
-                     <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Amount</label>
-                     <input type="number" step="0.01" className="w-full mt-1 rounded-md border border-zinc-200 bg-transparent px-3 min-h-[48px] text-sm dark:border-zinc-800" value={manualAmount} onChange={e => setManualAmount(e.target.value)} />
-                   </div>
-                   <div>
-                     <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Category</label>
-                     <input type="text" className="w-full mt-1 rounded-md border border-zinc-200 bg-transparent px-3 min-h-[48px] text-sm dark:border-zinc-800" value={manualCategory} onChange={e => setManualCategory(e.target.value)} />
-                   </div>
+              <div className="mt-4 space-y-3 pt-4 border-t border-zinc-100 dark:border-zinc-800">
+                <p className="text-xs text-zinc-500 mb-2">Override Extracted Values (Optional{resubmitId ? ' for resubmission' : ''})</p>
+                <div>
+                  <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Merchant</label>
+                  <input
+                    type="text"
+                    className="w-full mt-1 rounded-md border border-zinc-200 bg-transparent px-3 min-h-[48px] text-sm dark:border-zinc-800"
+                    value={manualMerchant}
+                    onChange={e => setManualMerchant(e.target.value)}
+                    placeholder="e.g. Office Stationery"
+                  />
                 </div>
-              )}
+                <div>
+                  <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Amount</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="w-full mt-1 rounded-md border border-zinc-200 bg-transparent px-3 min-h-[48px] text-sm dark:border-zinc-800"
+                    value={manualAmount}
+                    onChange={e => setManualAmount(e.target.value)}
+                    placeholder="e.g. 1578"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Category</label>
+                  <input
+                    type="text"
+                    className="w-full mt-1 rounded-md border border-zinc-200 bg-transparent px-3 min-h-[48px] text-sm dark:border-zinc-800"
+                    value={manualCategory}
+                    onChange={e => setManualCategory(e.target.value)}
+                    placeholder="e.g. office"
+                  />
+                </div>
+              </div>
             </div>
 
             <button
