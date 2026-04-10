@@ -7,6 +7,30 @@ const visionModel = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
 const EMBEDDING_MODEL_CANDIDATES = ['text-embedding-004', 'gemini-embedding-001', 'embedding-001'] as const
 const EMBEDDING_DIMENSIONS = 768
 
+function normalizeEmbeddingDimensions(values: number[], target = EMBEDDING_DIMENSIONS): number[] {
+  if (values.length === target) return values
+
+  if (values.length < target) {
+    return [...values, ...new Array<number>(target - values.length).fill(0)]
+  }
+
+  // Down-project deterministically by averaging source buckets into target slots.
+  const projected = new Array<number>(target).fill(0)
+  const counts = new Array<number>(target).fill(0)
+
+  for (let i = 0; i < values.length; i += 1) {
+    const slot = Math.min(target - 1, Math.floor((i * target) / values.length))
+    projected[slot] += values[i]
+    counts[slot] += 1
+  }
+
+  for (let i = 0; i < target; i += 1) {
+    if (counts[i] > 0) projected[i] /= counts[i]
+  }
+
+  return projected
+}
+
 function localFallbackEmbedding(text: string, dimensions = EMBEDDING_DIMENSIONS): number[] {
   const vec = new Array<number>(dimensions).fill(0)
   const source = text.trim() || ' '
@@ -259,7 +283,12 @@ export async function embedText(text: string): Promise<number[]> {
       const values = result?.embedding?.values
 
       if (Array.isArray(values) && values.length > 0) {
-        return values
+        if (values.length !== EMBEDDING_DIMENSIONS) {
+          console.warn(
+            `[Gemini] Embedding dimension mismatch (${values.length}); normalizing to ${EMBEDDING_DIMENSIONS}.`
+          )
+        }
+        return normalizeEmbeddingDimensions(values)
       }
 
       throw new Error(`Empty embedding returned for model ${modelName}`)
