@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, Suspense } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { toast } from 'sonner'
-import { CheckCircle2, XCircle, AlertCircle, Loader2, UploadCloud, RefreshCw, Camera, TrendingUp } from 'lucide-react'
+import { CheckCircle2, XCircle, AlertCircle, Loader2, UploadCloud, RefreshCw, Camera, TrendingUp, PlusCircle, Layers, ArrowRight } from 'lucide-react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import imageCompression from 'browser-image-compression'
 
@@ -102,6 +102,14 @@ function SubmitClaimForm() {
   const [budget, setBudget] = useState<Record<string, { limit: number; spent: number; currency: string }> | null>(null)
   const [isOnline, setIsOnline] = useState(true)
 
+  // Feature 3: Batch queue
+  type BatchItem = { id: string; file: File; preview: string | null; qualityWarning: string | null; status: 'pending' | 'uploading' | 'done' | 'error'; result?: any; error?: string }
+  const [batchQueue, setBatchQueue] = useState<BatchItem[]>([])
+  const [batchSubmitting, setBatchSubmitting] = useState(false)
+
+  // Feature 4: INR equivalent for foreign currencies
+  const [inrEquivalent, setInrEquivalent] = useState<number | null>(null)
+
   // Fetch all category budgets once on mount
   useEffect(() => {
     fetch('/api/employee/budget')
@@ -109,6 +117,21 @@ function SubmitClaimForm() {
       .then(d => { if (d.budget) setBudget(d.budget) })
       .catch(() => {})
   }, [])
+
+  // Feature 4: Fetch live INR equivalent when result has a foreign currency
+  useEffect(() => {
+    setInrEquivalent(null)
+    const currency = result?.extracted?.currency
+    const amount = result?.extracted?.amount
+    if (!currency || !amount || currency === 'INR') return
+    fetch(`https://open.er-api.com/v6/latest/${currency}`)
+      .then(r => r.json())
+      .then(d => {
+        const rate = d?.rates?.INR
+        if (rate && Number.isFinite(rate)) setInrEquivalent(Math.round(Number(amount) * rate))
+      })
+      .catch(() => {})
+  }, [result])
 
   // Online/offline detection + queue flush
   useEffect(() => {
@@ -287,7 +310,52 @@ function SubmitClaimForm() {
     setUnreadable(null)
     setQualityWarning(null)
     setProgressStep(0)
+    setInrEquivalent(null)
     router.replace('/employee/submit')
+  }
+
+  // Feature 3: Add current file to batch queue
+  const handleAddToBatch = async () => {
+    if (!file) return
+    const id = `${Date.now()}-${Math.random()}`
+    const item: BatchItem = {
+      id,
+      file,
+      preview,
+      qualityWarning,
+      status: 'pending',
+    }
+    setBatchQueue(prev => [...prev, item])
+    setFile(null)
+    setPreview(null)
+    setQualityWarning(null)
+    toast.info('Receipt added to batch queue.')
+  }
+
+  // Feature 3: Submit all items in the batch queue sequentially
+  const handleSubmitBatch = async () => {
+    if (batchSubmitting || batchQueue.length === 0) return
+    setBatchSubmitting(true)
+    for (const item of batchQueue) {
+      if (item.status === 'done') continue
+      setBatchQueue(prev => prev.map(i => i.id === item.id ? { ...i, status: 'uploading' } : i))
+      try {
+        const fd = new FormData()
+        fd.append('receipt', item.file)
+        fd.append('business_purpose', purpose.length >= 10 ? purpose : 'Batch submission')
+        if (manualMerchant) fd.append('manual_merchant', manualMerchant)
+        if (manualAmount) fd.append('manual_amount', manualAmount)
+        if (manualCategory) fd.append('manual_category', manualCategory)
+        const res = await fetch('/api/claims/analyze', { method: 'POST', body: fd })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Failed')
+        setBatchQueue(prev => prev.map(i => i.id === item.id ? { ...i, status: 'done', result: data } : i))
+      } catch (err: any) {
+        setBatchQueue(prev => prev.map(i => i.id === item.id ? { ...i, status: 'error', error: err.message } : i))
+      }
+    }
+    setBatchSubmitting(false)
+    toast.success('Batch submission complete!')
   }
 
   const formatCurrency = (amt: number | null, curr: string | null) => {
@@ -360,6 +428,14 @@ function SubmitClaimForm() {
                   </div>
                   <button onClick={() => { setFile(null); setQualityWarning(null); }} className="text-sm text-red-600 hover:underline shrink-0 p-2 min-h-[48px]">Remove</button>
                 </div>
+
+                {/* Feature 3: Add to Batch button */}
+                <button
+                  onClick={handleAddToBatch}
+                  className="flex items-center gap-2 w-full justify-center text-sm text-blue-600 hover:text-blue-700 border border-blue-200 rounded-md py-2 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-950/20 transition"
+                >
+                  <PlusCircle className="w-4 h-4" /> Add to Batch (queue another receipt)
+                </button>
                 
                 {qualityWarning && (
                   <div className="flex items-start gap-2 p-3 text-sm rounded bg-amber-50 border border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-900/50 dark:text-amber-400">
@@ -486,6 +562,46 @@ function SubmitClaimForm() {
         </div>
       )}
 
+      {/* Feature 3: Batch Queue Display */}
+      {batchQueue.length > 0 && !result && (
+        <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Layers className="w-5 h-5 text-blue-600" />
+              <h2 className="text-lg font-semibold">Batch Queue ({batchQueue.length} receipts)</h2>
+            </div>
+            <button
+              onClick={handleSubmitBatch}
+              disabled={batchSubmitting || !isOnline}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none"
+            >
+              {batchSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+              {batchSubmitting ? 'Submitting...' : 'Submit All'}
+            </button>
+          </div>
+          <div className="space-y-2">
+            {batchQueue.map((item) => (
+              <div key={item.id} className="flex items-center gap-3 p-3 rounded-lg border border-zinc-100 dark:border-zinc-800">
+                {item.preview && <img src={item.preview} alt="preview" className="w-10 h-10 object-cover rounded border border-zinc-200" />}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{item.file.name}</p>
+                  <p className="text-xs text-zinc-500">{(item.file.size / 1024 / 1024).toFixed(2)} MB</p>
+                </div>
+                <div className="shrink-0">
+                  {item.status === 'pending' && <span className="text-xs text-zinc-400 capitalize">Pending</span>}
+                  {item.status === 'uploading' && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+                  {item.status === 'done' && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+                  {item.status === 'error' && <span title={item.error}><XCircle className="w-5 h-5 text-red-500" /></span>}
+                </div>
+                {item.status !== 'uploading' && item.status !== 'done' && (
+                  <button onClick={() => setBatchQueue(prev => prev.filter(i => i.id !== item.id))} className="text-xs text-red-500 hover:underline shrink-0">Remove</button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Results Section */}
       {unreadable && (
         <div className="rounded-xl border border-red-200 bg-red-50 p-6 dark:border-red-900/30 dark:bg-red-950/20 max-w-2xl mx-auto">
@@ -512,10 +628,36 @@ function SubmitClaimForm() {
              <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
               <p className="text-xs text-zinc-500 uppercase">Amount</p>
               <p className="font-semibold text-lg mt-1">{formatCurrency(result.extracted.amount, result.extracted.currency)}</p>
+              {/* Feature 4: Live INR Equivalent */}
+              {inrEquivalent != null && result.extracted.currency !== 'INR' && (
+                <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5 font-medium">≈ ₹{inrEquivalent.toLocaleString('en-IN')} INR</p>
+              )}
             </div>
             <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
               <p className="text-xs text-zinc-500 uppercase">Category</p>
               <p className="font-semibold text-lg mt-1 capitalize">{result.extracted.category}</p>
+            </div>
+            {/* Feature 1: OCR Confidence Card */}
+            <div className="col-span-2 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+              <p className="text-xs text-zinc-500 uppercase mb-2">AI Extraction Quality</p>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className={`px-2.5 py-0.5 text-xs font-bold rounded-full border ${
+                  result.extracted.confidence === 'high'   ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800'
+                  : result.extracted.confidence === 'medium' ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800'
+                  : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'
+                }`}>{(result.extracted.confidence || 'unknown').toUpperCase()} CONFIDENCE</span>
+                {(['merchant', 'amount', 'date'] as const).map((field) => (
+                  <div key={field} className="flex items-center gap-1 text-xs text-zinc-600 dark:text-zinc-400">
+                    {result.extracted[field] != null
+                      ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                      : <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
+                    <span className="capitalize">{field}:</span>
+                    <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                      {result.extracted[field] != null ? String(result.extracted[field]) : 'not detected'}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
