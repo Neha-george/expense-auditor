@@ -5,6 +5,20 @@ import { sendEmail, resubmissionTemplate, verdictTemplate, submissionConfirmatio
 
 const MAX_SIZE = 10 * 1024 * 1024 // 10MB
 
+async function withTimeout<T>(task: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null
+  try {
+    return await Promise.race([
+      task,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out`)), ms)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 function parseLocation(locationRaw?: string | null) {
   const raw = (locationRaw || '').trim()
   if (!raw) return { city: null as string | null, country: null as string | null }
@@ -124,28 +138,29 @@ export async function POST(request: NextRequest) {
         const pdf = require('pdf-parse/lib/pdf-parse.js') as (buf: Buffer) => Promise<{ text: string }>
         const parsed = await pdf(buffer)
         if (!parsed?.text?.trim()) return null
-        return await extractReceiptDataFromText(parsed.text)
+        return await withTimeout(extractReceiptDataFromText(parsed.text), 6000, 'PDF text extraction')
       } catch (pdfError: any) {
         console.warn('PDF text extraction failed:', pdfError?.message)
         return null
       }
     }
 
+    // First pass: fast local extraction to avoid quota/network waits.
+    const localExtracted = await extractReceiptDataLocally(buffer, actualType)
+    if (localExtracted?.is_readable) {
+      extracted = { ...localExtracted }
+    }
+
     // Prefer text extraction for PDFs because image OCR on PDFs is less reliable.
-    if (actualType === 'application/pdf') {
+    if (actualType === 'application/pdf' && !hasCoreFields(extracted)) {
       extracted = await tryPdfTextExtraction()
     }
 
-    if (!extracted) {
+    if (!hasCoreFields(extracted)) {
       try {
-        extracted = await extractReceiptData(imageBase64, actualType)
+        extracted = await withTimeout(extractReceiptData(imageBase64, actualType), 6000, 'Receipt OCR extraction')
       } catch (e1: any) {
-        console.warn('OCR Attempt 1 failed:', e1.message)
-        try {
-          extracted = await extractReceiptData(imageBase64, actualType)
-        } catch (e2: any) {
-          console.error('OCR Attempt 2 failed:', e2.message)
-        }
+        console.warn('OCR extraction failed:', e1.message)
       }
     }
 
@@ -155,7 +170,7 @@ export async function POST(request: NextRequest) {
       (!hasCoreFields(extracted) || extracted?.confidence === 'low')
     ) {
       try {
-        const bestEffort = await extractReceiptDataBestEffort(imageBase64, actualType)
+        const bestEffort = await withTimeout(extractReceiptDataBestEffort(imageBase64, actualType), 6000, 'Best-effort OCR extraction')
         if (bestEffort && hasCoreFields(bestEffort)) {
           extracted = bestEffort
         }
@@ -229,18 +244,21 @@ export async function POST(request: NextRequest) {
     const comparedPolicies = (activePolicies || []).map((p: any) => p.name)
     const activePolicyCount = activePolicies?.length ?? 0
 
-    // ── Step 3: Embed for vector search ──────────────────────
-    const searchQuery = `${extracted.category} expense: ${businessPurpose}`
-    const queryEmbedding = await embedText(searchQuery)
+    let policyChunks: string[] = []
+    if (activePolicyCount > 0) {
+      // ── Step 3: Embed for vector search ──────────────────────
+      const searchQuery = `${extracted.category} expense: ${businessPurpose}`
+      const queryEmbedding = await embedText(searchQuery)
 
-    // ── Step 4: Org-isolated vector search across all active policies ───────
-    const matchCount = Math.min(24, Math.max(4, activePolicyCount * 4))
-    const { data: chunks } = await admin.rpc('match_policy_chunks', {
-      query_embedding: JSON.stringify(queryEmbedding),
-      match_count: matchCount,
-      p_organisation_id: orgId,         // ← KEY: tenant isolation
-    })
-    const policyChunks: string[] = chunks?.map((c: any) => c.content) ?? []
+      // ── Step 4: Org-isolated vector search across all active policies ───────
+      const matchCount = Math.min(24, Math.max(4, activePolicyCount * 4))
+      const { data: chunks } = await admin.rpc('match_policy_chunks', {
+        query_embedding: JSON.stringify(queryEmbedding),
+        match_count: matchCount,
+        p_organisation_id: orgId,         // ← KEY: tenant isolation
+      })
+      policyChunks = chunks?.map((c: any) => c.content) ?? []
+    }
 
     // ── Step 5: Generate verdict ──────────────────────────────
     const location = parseLocation(profile?.location)
@@ -421,13 +439,9 @@ export async function POST(request: NextRequest) {
           : null
       }
       try {
-        verdictData = await generateVerdict(args)
+        verdictData = await withTimeout(generateVerdict(args), 8000, 'Verdict generation')
       } catch {
-        try {
-          verdictData = await generateVerdict(args)
-        } catch {
-          verdictData = { verdict: 'flagged', reason: 'AI response parsing failed — flagged for manual review.', policy_reference: null, confidence: 0.5 }
-        }
+        verdictData = { verdict: 'flagged', reason: 'AI response unavailable — flagged for manual review.', policy_reference: null, confidence: 0.5 }
       }
 
       // ── Compute requires_review ───────────────────────────────
