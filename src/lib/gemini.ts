@@ -5,7 +5,7 @@ import { join } from 'path'
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null
-const VISION_MODEL_CANDIDATES = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'] as const
+const VISION_MODEL_CANDIDATES = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-flash-latest'] as const
 const ENABLE_TESSERACT_OCR = process.env.ENABLE_TESSERACT_OCR !== 'false'
 
 function getVisionModel(modelName: string) {
