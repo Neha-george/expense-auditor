@@ -1,8 +1,65 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { createHash } from 'crypto'
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
-const visionModel = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY
+const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null
+const visionModel = genAI?.getGenerativeModel({ model: 'gemini-2.0-flash' })
+const ENABLE_TESSERACT_OCR = process.env.ENABLE_TESSERACT_OCR === 'true'
+
+let geminiBlockedUntil = 0
+
+function extractRetryDelayMs(text: string): number | null {
+  const retryMatch = text.match(/retryDelay"\s*:\s*"(\d+)s"/i) || text.match(/retry in\s+([\d.]+)s/i)
+  if (!retryMatch) return null
+
+  const raw = Number(retryMatch[1])
+  if (!Number.isFinite(raw) || raw <= 0) return null
+  return Math.ceil(raw * 1000)
+}
+
+function errorText(err: unknown): string {
+  if (err instanceof Error) return err.message
+  if (typeof err === 'string') return err
+  try {
+    return JSON.stringify(err)
+  } catch {
+    return String(err)
+  }
+}
+
+function isQuotaOrRateLimitError(err: unknown): boolean {
+  const lower = errorText(err).toLowerCase()
+  return lower.includes('429') || lower.includes('too many requests') || lower.includes('quota') || lower.includes('rate limit')
+}
+
+function markGeminiBackoff(err: unknown) {
+  const msg = errorText(err)
+  const parsedRetry = extractRetryDelayMs(msg)
+  const minBackoffMs = 2 * 60 * 1000
+  const maxBackoffMs = 15 * 60 * 1000
+  const backoffMs = Math.max(minBackoffMs, Math.min(maxBackoffMs, parsedRetry ?? minBackoffMs))
+  geminiBlockedUntil = Date.now() + backoffMs
+}
+
+function getGeminiUnavailableReason(): string | null {
+  if (!visionModel) return 'Gemini is not configured.'
+  if (Date.now() < geminiBlockedUntil) return 'Gemini is temporarily unavailable due to quota limits.'
+  return null
+}
+
+async function generateContentWithBackoff(input: any) {
+  const unavailableReason = getGeminiUnavailableReason()
+  if (unavailableReason) throw new Error(unavailableReason)
+
+  try {
+    return await visionModel!.generateContent(input)
+  } catch (err) {
+    if (isQuotaOrRateLimitError(err)) {
+      markGeminiBackoff(err)
+    }
+    throw err
+  }
+}
 
 // Embedding model names can vary by API version/account rollout.
 const EMBEDDING_MODEL_CANDIDATES = ['text-embedding-004', 'gemini-embedding-001', 'embedding-001'] as const
@@ -79,7 +136,7 @@ If is_readable is true, do NOT leave merchant/amount/category empty. Infer best-
 Use INR when currency is unclear.
 Return ONLY the JSON. No explanation, no markdown, no code blocks.`
 
-  const result = await visionModel.generateContent([
+  const result = await generateContentWithBackoff([
     { inlineData: { data: imageBase64, mimeType } },
     prompt,
   ])
@@ -110,7 +167,7 @@ Rules:
 - If truly unreadable, set is_readable to false and others null.
 - Return JSON only.`
 
-  const result = await visionModel.generateContent([
+  const result = await generateContentWithBackoff([
     { inlineData: { data: imageBase64, mimeType } },
     prompt,
   ])
@@ -144,7 +201,7 @@ Rules:
 RECEIPT TEXT:
 ${receiptText.slice(0, 20000)}`
 
-  const result = await visionModel.generateContent(prompt)
+  const result = await generateContentWithBackoff(prompt)
   const text = result.response.text().trim()
     .replace(/^```json\n?/, '').replace(/\n?```$/, '')
 
@@ -163,8 +220,17 @@ type LocalReceipt = {
 
 const LOCAL_RECEIPT_CACHE = new Map<string, LocalReceipt>()
 let ocrWorkerPromise: Promise<any> | null = null
+let ocrDisabledLogged = false
 
 async function getOcrWorker() {
+  if (!ENABLE_TESSERACT_OCR) {
+    if (!ocrDisabledLogged) {
+      console.warn('[OCR] Tesseract OCR is disabled. Set ENABLE_TESSERACT_OCR=true to enable local image OCR.')
+      ocrDisabledLogged = true
+    }
+    return null
+  }
+
   if (!ocrWorkerPromise) {
     ocrWorkerPromise = (async () => {
       const { createWorker } = await import('tesseract.js')
@@ -273,6 +339,18 @@ export async function extractReceiptDataLocally(buffer: Buffer, mimeType: string
     }
 
     const worker = await getOcrWorker()
+    if (!worker) {
+      return {
+        is_readable: false,
+        merchant: null,
+        amount: null,
+        currency: 'INR',
+        date: null,
+        category: 'other',
+        confidence: 'low',
+      }
+    }
+
     const result = await worker.recognize(buffer)
     extracted = parseReceiptTextHeuristics(result?.data?.text || '')
     LOCAL_RECEIPT_CACHE.set(cacheKey, extracted)
@@ -396,7 +474,7 @@ Rules:
 - confidence < 0.7: low certainty, mandatory human review required
 Return ONLY the JSON. No markdown, no explanation.`
 
-  const result = await visionModel.generateContent(prompt)
+  const result = await generateContentWithBackoff(prompt)
   const text = result.response.text().trim()
     .replace(/^```json\n?/, '').replace(/\n?```$/, '')
 
@@ -433,7 +511,7 @@ POLICY TEXT:
 ${policyText.slice(0, 25000)}
 `
 
-  const result = await visionModel.generateContent(prompt)
+  const result = await generateContentWithBackoff(prompt)
   const text = result.response.text().trim()
     .replace(/^```json\n?/, '').replace(/\n?```$/, '')
 
@@ -468,7 +546,7 @@ Rules:
 - Keep clause_text under 120 words.
 `
 
-  const result = await visionModel.generateContent(prompt)
+  const result = await generateContentWithBackoff(prompt)
   const text = result.response.text().trim()
     .replace(/^```json\n?/, '').replace(/\n?```$/, '')
 
@@ -477,11 +555,16 @@ Rules:
 
 // Embed a text string → 768-dimension vector
 export async function embedText(text: string): Promise<number[]> {
+  const unavailableReason = getGeminiUnavailableReason()
+  if (unavailableReason) {
+    return localFallbackEmbedding(text)
+  }
+
   let lastError: unknown
 
   for (const modelName of EMBEDDING_MODEL_CANDIDATES) {
     try {
-      const model = genAI.getGenerativeModel({ model: modelName })
+      const model = genAI!.getGenerativeModel({ model: modelName })
       const result = await model.embedContent(text)
       const values = result?.embedding?.values
 
@@ -497,6 +580,10 @@ export async function embedText(text: string): Promise<number[]> {
       throw new Error(`Empty embedding returned for model ${modelName}`)
     } catch (err) {
       lastError = err
+      if (isQuotaOrRateLimitError(err)) {
+        markGeminiBackoff(err)
+        break
+      }
     }
   }
 
