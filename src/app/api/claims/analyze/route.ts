@@ -76,7 +76,7 @@ function buildFastVerdict(params: {
     const remaining = Number(params.structuredLimit.limit) - Number(params.structuredLimit.currentSpend)
     if (params.claimAmount > remaining) {
       return {
-        verdict: 'flagged',
+        verdict: 'rejected',
         reason: `Claim exceeds remaining monthly limit (${remaining.toFixed(2)} ${params.structuredLimit.currency}).`,
         policy_reference: firstReference,
         confidence: 0.9,
