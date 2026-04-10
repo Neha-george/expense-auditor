@@ -72,10 +72,17 @@ export async function middleware(request: NextRequest) {
 
   // ── RULE 4: Guard Admin routes ────────────────────────────
   if (path.startsWith('/admin') && profile?.role !== 'admin') {
+    console.log(`[Middleware] -> Blocking non-admin from /admin route`)
     return NextResponse.redirect(new URL('/employee/submit', request.url))
   }
 
-  // ── RULE 5: Redirect root to appropriate dashboard ────────
+  // ── RULE 5: Guard Employee routes — admins go to admin dashboard ───
+  if (path.startsWith('/employee') && profile?.role === 'admin') {
+    console.log(`[Middleware] -> Redirecting admin away from employee route to /admin/dashboard`)
+    return NextResponse.redirect(new URL('/admin/dashboard', request.url))
+  }
+
+  // ── RULE 6: Redirect root to appropriate dashboard ────────
   if (path === '/') {
     const dest = profile?.role === 'admin' ? '/admin/dashboard' : '/employee/submit'
     return NextResponse.redirect(new URL(dest, request.url))
