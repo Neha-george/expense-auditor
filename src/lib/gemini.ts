@@ -150,6 +150,125 @@ ${receiptText.slice(0, 20000)}`
   return JSON.parse(text)
 }
 
+type LocalReceipt = {
+  is_readable: boolean
+  merchant: string | null
+  amount: number | null
+  currency: string
+  date: string | null
+  category: 'meals' | 'travel' | 'accommodation' | 'transport' | 'office' | 'entertainment' | 'other'
+  confidence: 'high' | 'medium' | 'low'
+}
+
+function parseAmount(raw: string) {
+  const normalized = raw.replace(/[,\s]/g, '')
+  const value = Number(normalized)
+  return Number.isFinite(value) ? value : null
+}
+
+function parseDateFromText(text: string): string | null {
+  const yyyyMmDd = text.match(/\b(20\d{2})[-\/.](0?[1-9]|1[0-2])[-\/.](0?[1-9]|[12]\d|3[01])\b/)
+  if (yyyyMmDd) {
+    const y = yyyyMmDd[1]
+    const m = String(Number(yyyyMmDd[2])).padStart(2, '0')
+    const d = String(Number(yyyyMmDd[3])).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }
+
+  const ddMmYyyy = text.match(/\b(0?[1-9]|[12]\d|3[01])[-\/.](0?[1-9]|1[0-2])[-\/.](20\d{2})\b/)
+  if (ddMmYyyy) {
+    const d = String(Number(ddMmYyyy[1])).padStart(2, '0')
+    const m = String(Number(ddMmYyyy[2])).padStart(2, '0')
+    const y = ddMmYyyy[3]
+    return `${y}-${m}-${d}`
+  }
+
+  return null
+}
+
+function inferCategory(text: string): LocalReceipt['category'] {
+  const t = text.toLowerCase()
+  if (/(restaurant|dinner|lunch|cafe|food|meal)/.test(t)) return 'meals'
+  if (/(flight|airline|boarding|train|trip|taxi|uber|ola|travel)/.test(t)) return 'travel'
+  if (/(hotel|stay|room|lodging|accommodation)/.test(t)) return 'accommodation'
+  if (/(metro|bus|fuel|petrol|diesel|cab|transport)/.test(t)) return 'transport'
+  if (/(stationery|printer|office|software|subscription|supplies)/.test(t)) return 'office'
+  if (/(movie|event|entertainment|club|tickets)/.test(t)) return 'entertainment'
+  return 'other'
+}
+
+function parseReceiptTextHeuristics(receiptText: string): LocalReceipt {
+  const text = receiptText.replace(/\r/g, '\n')
+  const lines = text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+
+  const hasReadableText = text.replace(/\s/g, '').length > 24
+
+  const merchantBlacklist = /(invoice|tax|bill|receipt|gst|customer copy|phone|table|server|cash|card|subtotal|total|thank you)/i
+  const merchant = lines.find((line) => line.length >= 3 && line.length <= 60 && !merchantBlacklist.test(line)) || null
+
+  const totalMatch = text.match(/(?:grand\s*total|total\s*amount|amount\s*due|net\s*amount|payable|bill\s*amount)[^\d₹inr]{0,25}(?:₹|rs\.?|inr)?\s*([0-9][0-9,]*\.?\d{0,2})/i)
+  const currencyMatchAll = [...text.matchAll(/(?:₹|rs\.?|inr|usd|\$|eur|gbp)\s*([0-9][0-9,]*\.?\d{0,2})/gi)]
+  const allNumericCurrencyAmounts = currencyMatchAll
+    .map((m) => parseAmount(m[1]))
+    .filter((v): v is number => v != null && v > 0 && v < 10000000)
+
+  let amount = totalMatch ? parseAmount(totalMatch[1]) : null
+  if (amount == null && allNumericCurrencyAmounts.length > 0) {
+    amount = Math.max(...allNumericCurrencyAmounts)
+  }
+
+  const currency = /\$|\busd\b/i.test(text)
+    ? 'USD'
+    : /\beur\b/i.test(text)
+    ? 'EUR'
+    : /\bgbp\b/i.test(text)
+    ? 'GBP'
+    : 'INR'
+
+  const date = parseDateFromText(text)
+  const category = inferCategory(text)
+
+  return {
+    is_readable: hasReadableText,
+    merchant: hasReadableText ? (merchant || 'Unknown Merchant') : null,
+    amount: hasReadableText ? (amount ?? 0) : null,
+    currency,
+    date,
+    category,
+    confidence: hasReadableText ? (amount && merchant ? 'medium' : 'low') : 'low',
+  }
+}
+
+export async function extractReceiptDataLocally(buffer: Buffer, mimeType: string): Promise<LocalReceipt> {
+  try {
+    if (mimeType === 'application/pdf') {
+      const pdf = require('pdf-parse/lib/pdf-parse.js') as (buf: Buffer) => Promise<{ text: string }>
+      const parsed = await pdf(buffer)
+      return parseReceiptTextHeuristics(parsed?.text || '')
+    }
+
+    const { createWorker } = await import('tesseract.js')
+    const worker = await createWorker('eng')
+    const result = await worker.recognize(buffer)
+    await worker.terminate()
+
+    return parseReceiptTextHeuristics(result?.data?.text || '')
+  } catch (err) {
+    return {
+      is_readable: false,
+      merchant: null,
+      amount: null,
+      currency: 'INR',
+      date: null,
+      category: 'other',
+      confidence: 'low',
+    }
+  }
+}
+
 // Verdict: given receipt data + policy context + employee profile → return verdict
 export async function generateVerdict(params: {
   merchant: string

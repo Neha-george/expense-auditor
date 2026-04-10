@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminSupabase, createServerSupabase } from '@/lib/supabase-server'
-import { extractReceiptData, extractReceiptDataBestEffort, extractReceiptDataFromText, generateVerdict, embedText } from '@/lib/gemini'
+import { extractReceiptData, extractReceiptDataBestEffort, extractReceiptDataFromText, extractReceiptDataLocally, generateVerdict, embedText } from '@/lib/gemini'
 import { sendEmail, resubmissionTemplate, verdictTemplate, submissionConfirmationTemplate, adminFlaggedAlertTemplate } from '@/lib/email'
 
 const MAX_SIZE = 10 * 1024 * 1024 // 10MB
@@ -167,6 +167,16 @@ export async function POST(request: NextRequest) {
     if ((!extracted || !hasCoreFields(extracted)) && actualType === 'application/pdf') {
       const textExtracted = await tryPdfTextExtraction()
       if (textExtracted) extracted = textExtracted
+    }
+
+    if (!extracted || !hasCoreFields(extracted)) {
+      const localExtracted = await extractReceiptDataLocally(buffer, actualType)
+      if (localExtracted?.is_readable) {
+        extracted = {
+          ...extracted,
+          ...localExtracted,
+        }
+      }
     }
 
     if (!extracted) {
