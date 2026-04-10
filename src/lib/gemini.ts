@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { createHash } from 'crypto'
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 const visionModel = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
@@ -160,6 +161,19 @@ type LocalReceipt = {
   confidence: 'high' | 'medium' | 'low'
 }
 
+const LOCAL_RECEIPT_CACHE = new Map<string, LocalReceipt>()
+let ocrWorkerPromise: Promise<any> | null = null
+
+async function getOcrWorker() {
+  if (!ocrWorkerPromise) {
+    ocrWorkerPromise = (async () => {
+      const { createWorker } = await import('tesseract.js')
+      return await createWorker('eng')
+    })()
+  }
+  return ocrWorkerPromise
+}
+
 function parseAmount(raw: string) {
   const normalized = raw.replace(/[,\s]/g, '')
   const value = Number(normalized)
@@ -244,18 +258,25 @@ function parseReceiptTextHeuristics(receiptText: string): LocalReceipt {
 
 export async function extractReceiptDataLocally(buffer: Buffer, mimeType: string): Promise<LocalReceipt> {
   try {
+    const cacheKey = createHash('sha1').update(buffer).digest('hex')
+    const cached = LOCAL_RECEIPT_CACHE.get(cacheKey)
+    if (cached) return cached
+
+    let extracted: LocalReceipt
+
     if (mimeType === 'application/pdf') {
       const pdf = require('pdf-parse/lib/pdf-parse.js') as (buf: Buffer) => Promise<{ text: string }>
       const parsed = await pdf(buffer)
-      return parseReceiptTextHeuristics(parsed?.text || '')
+      extracted = parseReceiptTextHeuristics(parsed?.text || '')
+      LOCAL_RECEIPT_CACHE.set(cacheKey, extracted)
+      return extracted
     }
 
-    const { createWorker } = await import('tesseract.js')
-    const worker = await createWorker('eng')
+    const worker = await getOcrWorker()
     const result = await worker.recognize(buffer)
-    await worker.terminate()
-
-    return parseReceiptTextHeuristics(result?.data?.text || '')
+    extracted = parseReceiptTextHeuristics(result?.data?.text || '')
+    LOCAL_RECEIPT_CACHE.set(cacheKey, extracted)
+    return extracted
   } catch (err) {
     return {
       is_readable: false,
