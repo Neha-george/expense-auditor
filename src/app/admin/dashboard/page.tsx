@@ -160,7 +160,7 @@ export default function AdminDashboardPage() {
         {/* Chart */}
         <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 lg:col-span-4">
           <h2 className="text-lg font-semibold mb-6">Claims by Category</h2>
-          <div className="h-[300px]">
+          <div className="h-[300px] min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#3f3f46" opacity={0.2} />

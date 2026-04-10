@@ -16,10 +16,12 @@ function chunkText(text: string, chunkSize = 1600, overlap = 200): string[] {
 
 export const maxDuration = 60
 
+type PdfParseFn = (buf: Buffer) => Promise<{ text: string }>
+
 export async function POST(request: NextRequest) {
   try {
-    // pdf-parse v1.1.1 exports the parse function directly
-    const pdf = require('pdf-parse') as (buf: Buffer) => Promise<{ text: string }>
+    // Import parser implementation directly to avoid pdf-parse package entry debug side-effects.
+    const pdf = require('pdf-parse/lib/pdf-parse.js') as PdfParseFn
     const supabase = await createServerSupabase()
     const admin = createAdminSupabase()
 

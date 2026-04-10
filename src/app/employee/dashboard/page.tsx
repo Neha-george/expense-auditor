@@ -152,7 +152,7 @@ export default function EmployeeDashboard() {
         <h2 className="text-lg font-semibold mb-6 text-zinc-900 dark:text-zinc-100">Category Budgets vs Actuals</h2>
         
         {chartData.length > 0 ? (
-          <div className="h-[350px] w-full">
+          <div className="h-[350px] w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#52525b" strokeOpacity={0.2} />
