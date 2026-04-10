@@ -37,17 +37,16 @@ function OnboardingForm() {
       
       if (!res.ok) {
         toast.error(data.error || 'Failed to join')
+        setLoading(false)
         if (data.error === 'Invalid or expired invite code') {
           router.push('/onboarding/request-access')
-          return
         }
-        setLoading(false)
         return
       }
 
       toast.success(`Successfully joined ${data.organisation.name}`)
-      router.push('/employee/submit')
-      router.refresh()
+      // Force full page reload to clear any Next.js router cache and ensure middleware gets fresh cookies
+      window.location.href = '/employee/submit'
     } catch (e: any) {
       toast.error('An unexpected error occurred')
       setLoading(false)
@@ -76,8 +75,7 @@ function OnboardingForm() {
 
       toast.success(`Successfully created ${data.organisation.name}`)
       // Admins need to upload policy to finish onboarding
-      router.push('/admin/policies')
-      router.refresh()
+      window.location.href = '/admin/policies'
     } catch (e: any) {
       toast.error('An unexpected error occurred')
       setLoading(false)
