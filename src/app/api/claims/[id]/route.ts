@@ -42,17 +42,17 @@ export async function PATCH(
     if (!currentClaim) return NextResponse.json({ error: 'Claim not found' }, { status: 404 })
 
     const isOverride = currentClaim.ai_verdict && currentClaim.ai_verdict !== verdict
-
-    if (isOverride && (!note || !note.trim())) {
-      return NextResponse.json({ error: 'Admin override reason is required when changing AI verdict.' }, { status: 400 })
-    }
+    const normalizedNote = (typeof note === 'string' ? note.trim() : '')
+    const noteToSave = isOverride
+      ? (normalizedNote || `Admin override: changed AI verdict from ${currentClaim.ai_verdict} to ${verdict}.`)
+      : normalizedNote
 
     // Update is scoped to both the claim id AND the org — prevents cross-tenant writes
     const { data, error } = await admin
       .from('claims')
       .update({
         admin_verdict: verdict,
-        admin_note: note,
+        admin_note: noteToSave,
         reviewed_by: user.id,
         status: verdict,
       })
@@ -77,7 +77,7 @@ export async function PATCH(
         amount_range: range,
         original_ai_verdict: currentClaim.ai_verdict,
         admin_verdict: verdict,
-        admin_reason: note
+        admin_reason: noteToSave
       })
     }
 
@@ -87,7 +87,7 @@ export async function PATCH(
       sendEmail({
         to: p.email,
         subject: `Expense Claim ${verdict.toUpperCase()} (Manual Review) - PolicyLens`,
-        html: verdictTemplate(p.full_name, data.merchant ?? 'Unknown', amt, data.currency ?? 'INR', verdict, data.ai_reason ?? 'Manual review', note)
+        html: verdictTemplate(p.full_name, data.merchant ?? 'Unknown', amt, data.currency ?? 'INR', verdict, data.ai_reason ?? 'Manual review', noteToSave)
       })
     }
 

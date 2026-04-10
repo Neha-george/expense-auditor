@@ -61,12 +61,6 @@ export default function AdminClaimsPage() {
   const handleAction = async (verdict: 'approved' | 'rejected') => {
     if (!selectedClaim) return
 
-    const isOverride = selectedClaim.ai_verdict && selectedClaim.ai_verdict !== verdict
-    if (isOverride && !adminNote.trim()) {
-      toast.error('An override reason is required since your verdict differs from the AI verdict.')
-      return
-    }
-
     setActionLoading(true)
     
     try {
