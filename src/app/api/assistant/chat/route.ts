@@ -15,6 +15,36 @@ function textResponse(message: string, status = 200) {
   })
 }
 
+function isQuotaOrRateLimitError(err: unknown) {
+  const msg = err instanceof Error ? err.message : String(err || '')
+  const lower = msg.toLowerCase()
+  return lower.includes('429') || lower.includes('too many requests') || lower.includes('quota') || lower.includes('rate limit')
+}
+
+function buildPolicyFallbackAnswer(message: string, chunks: any[] | null | undefined, activePolicyNames: string[]) {
+  const topChunks = (chunks || []).slice(0, 3).map((c: any) => String(c?.content || '').trim()).filter(Boolean)
+
+  if (topChunks.length === 0) {
+    return `I could not find a clear policy clause for your question right now.
+
+Question: "${message}"
+
+Please contact your admin for clarification. I have flagged this as a policy-gap query so the policy can be improved.`
+  }
+
+  const references = topChunks
+    .map((chunk, i) => `Reference ${i + 1}: ${chunk.slice(0, 280)}${chunk.length > 280 ? '...' : ''}`)
+    .join('\n\n')
+
+  return `I am temporarily running in fallback mode due to AI quota limits, so I cannot generate a full explanation right now.
+
+Based on active policies (${activePolicyNames.join(', ') || 'current active policies'}), here are the most relevant clauses I found for your question:
+
+${references}
+
+Please use these references for decision-making, or ask your admin for final clarification.`
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createServerSupabase()
@@ -163,12 +193,22 @@ ${policyContext}`
       })
     } catch (streamErr: any) {
       console.warn('Assistant stream fallback:', streamErr?.message)
-      const fallback = await model.generateContent(message)
-      const text = fallback.response.text()?.trim() || 'I could not generate a response right now. Please try again.'
-      return textResponse(text)
+      try {
+        const fallback = await model.generateContent(message)
+        const text = fallback.response.text()?.trim() || 'I could not generate a response right now. Please try again.'
+        return textResponse(text)
+      } catch (fallbackErr: any) {
+        if (isQuotaOrRateLimitError(fallbackErr)) {
+          return textResponse(buildPolicyFallbackAnswer(message, chunks, activePolicyNames))
+        }
+        throw fallbackErr
+      }
     }
   } catch (err: any) {
     console.error('Chat error:', err)
-    return textResponse(err.message || 'Chat failed', 500)
+    if (isQuotaOrRateLimitError(err)) {
+      return textResponse('AI quota is temporarily exceeded. Please retry in a few minutes.')
+    }
+    return textResponse('Assistant is temporarily unavailable. Please try again.', 500)
   }
 }

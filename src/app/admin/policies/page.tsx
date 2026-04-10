@@ -17,6 +17,17 @@ type PolicyAnalysis = {
   recommended_additions?: Recommendation[]
 }
 
+type PolicyGap = {
+  id: string
+  created_at: string
+  metadata?: {
+    message?: string
+    top_similarity?: number
+    chunk_count?: number
+    active_policy_names?: string[]
+  }
+}
+
 export default function AdminPoliciesPage() {
   const [policies, setPolicies] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -25,6 +36,8 @@ export default function AdminPoliciesPage() {
   const [policyName, setPolicyName] = useState('')
   const [generatingClauseKey, setGeneratingClauseKey] = useState<string | null>(null)
   const [busyPolicyId, setBusyPolicyId] = useState<string | null>(null)
+  const [policyGaps, setPolicyGaps] = useState<PolicyGap[]>([])
+  const [gapsLoading, setGapsLoading] = useState(true)
   const [generatedClauses, setGeneratedClauses] = useState<Record<string, { title: string; clause_text: string; rationale: string }>>({})
 
   const fetchPolicies = async () => {
@@ -48,8 +61,28 @@ export default function AdminPoliciesPage() {
     })
   }
 
+  const fetchPolicyGaps = async () => {
+    import('@/lib/supabase').then(async ({ createClient }) => {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('audit_logs')
+        .select('id, created_at, metadata')
+        .eq('action', 'policy_gap_query')
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      if (error) {
+        toast.error('Failed to load policy gap queries')
+      } else {
+        setPolicyGaps((data as PolicyGap[]) || [])
+      }
+      setGapsLoading(false)
+    })
+  }
+
   useEffect(() => {
     fetchPolicies()
+    fetchPolicyGaps()
   }, [])
 
   const handleUpload = async (e: React.FormEvent) => {
@@ -158,6 +191,20 @@ export default function AdminPoliciesPage() {
     } finally {
       setGeneratingClauseKey(null)
     }
+  }
+
+  const handleGenerateGapClause = async (gap: PolicyGap) => {
+    const gapMessage = gap.metadata?.message?.trim() || 'Uncovered expense scenario'
+    const key = `gap-${gap.id}`
+
+    await handleGenerateClause(
+      {
+        title: `Coverage for: ${gapMessage.slice(0, 80)}`,
+        why: `Employees are asking: "${gapMessage}" but current active policy excerpts do not clearly cover it. Add a precise, enforceable clause to reduce ambiguity in claim reviews.`,
+        priority: 'high',
+      },
+      key,
+    )
   }
 
   const activePolicy = policies.find(p => p.is_active)
@@ -340,9 +387,79 @@ export default function AdminPoliciesPage() {
               )}
             </div>
           )}
+
+          {/* Section D - Policy Gap Queries */}
+          <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-amber-600" /> Policy Gap Queries
+            </h2>
+
+            {gapsLoading ? (
+              <p className="text-sm text-zinc-500">Loading gap queries...</p>
+            ) : policyGaps.length === 0 ? (
+              <div className="p-3 rounded-md text-sm border border-zinc-200 bg-zinc-50 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300">
+                No gap queries detected yet.
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+                {policyGaps.map((gap) => {
+                  const key = `gap-${gap.id}`
+                  const draft = generatedClauses[key]
+                  const similarity = Number(gap.metadata?.top_similarity ?? 0)
+                  const policies = gap.metadata?.active_policy_names?.join(', ') || 'None'
+                  const queryText = gap.metadata?.message || 'Unknown query'
+                  return (
+                    <div key={gap.id} className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-700">
+                      <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{queryText}</p>
+                      <p className="text-xs text-zinc-500 mt-2">
+                        Similarity: {similarity.toFixed(3)} | {new Date(gap.created_at).toLocaleString()}
+                      </p>
+                      <p className="text-xs text-zinc-500 mt-1">
+                        Active Policies: {policies}
+                      </p>
+
+                      <div className="mt-3 flex justify-end">
+                        <button
+                          onClick={() => handleGenerateGapClause(gap)}
+                          disabled={generatingClauseKey === key}
+                          className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-blue-200 text-blue-700 text-xs font-medium hover:bg-blue-50 disabled:opacity-60 dark:border-blue-900 dark:text-blue-300 dark:hover:bg-blue-900/30"
+                        >
+                          {generatingClauseKey === key ? (
+                            <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating...</>
+                          ) : (
+                            <><Sparkles className="w-3.5 h-3.5" /> Generate Clause Draft</>
+                          )}
+                        </button>
+                      </div>
+
+                      {draft && (
+                        <div className="mt-3 rounded-md bg-zinc-50 border border-zinc-200 p-3 dark:bg-zinc-950 dark:border-zinc-800">
+                          <p className="text-xs uppercase tracking-wide text-zinc-500 mb-1">Draft Clause</p>
+                          <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{draft.title}</p>
+                          <p className="text-sm text-zinc-700 mt-2 whitespace-pre-wrap dark:text-zinc-300">{draft.clause_text}</p>
+                          <div className="mt-3 flex items-center justify-between gap-3">
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400">{draft.rationale}</p>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(draft.clause_text)
+                                toast.success('Clause copied')
+                              }}
+                              className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                            >
+                              <Copy className="w-3.5 h-3.5" /> Copy
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Section D - Policy History */}
+        {/* Section E - Policy History */}
         <div className="md:col-span-2">
            <div className="rounded-xl border border-zinc-200 bg-white shadow-sm overflow-hidden dark:border-zinc-800 dark:bg-zinc-900">
              <div className="p-6 border-b border-zinc-200 dark:border-zinc-800">
