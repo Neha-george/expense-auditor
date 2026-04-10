@@ -296,6 +296,61 @@ async function seedOrg(orgId, admins, employees) {
   console.log(`Seeded org ${orgId}: claims=${claimRows.length}, employees=${employeePool.length}`)
 }
 
+async function ensureDemoEmployees(orgId, admins, employees) {
+  const targetCount = 3
+  const existing = employees.length
+  if (existing >= targetCount) return employees
+
+  const createdEmails = []
+  const shortOrg = String(orgId).slice(0, 8)
+
+  for (let i = existing + 1; i <= targetCount; i += 1) {
+    const email = `demo.employee${i}.${shortOrg}@policylens.local`
+    const fullName = `Demo Employee ${i}`
+
+    const { error: createErr } = await admin.auth.admin.createUser({
+      email,
+      password: 'password123',
+      email_confirm: true,
+      user_metadata: { full_name: fullName },
+    })
+
+    if (createErr && !String(createErr.message || '').includes('already')) {
+      console.warn(`Could not create ${email}:`, createErr.message)
+      continue
+    }
+
+    createdEmails.push(email)
+  }
+
+  if (createdEmails.length > 0) {
+    await new Promise((r) => setTimeout(r, 700))
+    for (const email of createdEmails) {
+      const { data: p } = await admin.from('profiles').select('id').eq('email', email).maybeSingle()
+      if (!p?.id) continue
+      await admin
+        .from('profiles')
+        .update({
+          organisation_id: orgId,
+          role: 'employee',
+          onboarding_complete: true,
+          department: 'Operations',
+          location: 'Kochi, India',
+          seniority: 'mid',
+        })
+        .eq('id', p.id)
+    }
+  }
+
+  const { data: refreshed } = await admin
+    .from('profiles')
+    .select('id, email, full_name, role, organisation_id, department, seniority')
+    .eq('organisation_id', orgId)
+    .eq('role', 'employee')
+
+  return refreshed || employees
+}
+
 async function main() {
   console.log('Seeding synchronized demo data for employee/admin views...')
 
@@ -324,7 +379,8 @@ async function main() {
   }
 
   for (const [orgId, members] of byOrg.entries()) {
-    await seedOrg(orgId, members.admins, members.employees)
+    const employees = await ensureDemoEmployees(orgId, members.admins, members.employees)
+    await seedOrg(orgId, members.admins, employees)
   }
 
   console.log('\nDemo data seeding complete.')
