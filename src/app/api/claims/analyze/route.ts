@@ -289,7 +289,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Step 2: Resolve active policies for comparison ───────
-    const { data: activePolicies, error: activePoliciesError } = await supabase
+    const { data: activePolicies, error: activePoliciesError } = await admin
       .from('policy_documents')
       .select('id, name')
       .eq('organisation_id', orgId)
@@ -376,25 +376,25 @@ export async function POST(request: NextRequest) {
       else if (claimAmount >= 1000) currentRange = '1000+'
 
       const [{ data: limitConfig }, { data: monthClaims }, { data: orgConfig }, { data: baselineRows }, { data: recentFeedback }] = await Promise.all([
-        supabase
+        admin
           .from('spend_limits')
           .select('monthly_limit, currency')
           .eq('seniority', roleSeniority)
           .eq('category', roleCategory)
           .single(),
-        supabase
+        admin
           .from('claims')
           .select('amount')
           .eq('employee_id', user.id)
           .eq('category', roleCategory)
           .in('status', ['approved', 'pending'])
           .gte('created_at', startOfMonth.toISOString()),
-        supabase
+        admin
           .from('organisations')
           .select('auto_approve_threshold')
           .eq('id', orgId)
           .single(),
-        supabase
+        admin
           .from('claims')
           .select('amount')
           .eq('organisation_id', orgId)
@@ -407,7 +407,7 @@ export async function POST(request: NextRequest) {
           .not('amount', 'is', null)
           .gte('created_at', new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString())
           .limit(500),
-        supabase
+        admin
           .from('verdict_feedback')
           .select('category, amount_range, original_ai_verdict, admin_verdict, admin_reason')
           .eq('organisation_id', orgId)
