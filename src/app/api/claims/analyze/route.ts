@@ -92,6 +92,53 @@ function buildFastVerdict(params: {
   }
 }
 
+type FieldKey = 'merchant' | 'amount' | 'date'
+
+function clampConfidence(value: number) {
+  return Math.max(1, Math.min(99, Math.round(value)))
+}
+
+function buildFieldConfidence(params: {
+  extracted: any
+  manualMerchant: string | null
+  manualAmount: string | null
+}) {
+  const overall = params.extracted?.confidence
+  const overallBase = overall === 'high' ? 86 : overall === 'medium' ? 70 : 56
+
+  const merchantValue = params.extracted?.merchant
+  const amountValue = Number(params.extracted?.amount)
+  const dateValue = params.extracted?.date
+
+  const hasMerchant = Boolean(merchantValue) && merchantValue !== 'Unknown Merchant' && merchantValue !== 'Unknown'
+  const hasAmount = Number.isFinite(amountValue) && amountValue > 0
+  const hasDate = Boolean(dateValue) && !Number.isNaN(Date.parse(String(dateValue)))
+
+  const fieldConfidence: Record<FieldKey, number> = {
+    merchant: params.manualMerchant?.trim()
+      ? 99
+      : hasMerchant
+      ? clampConfidence(overallBase + 4)
+      : 22,
+    amount: params.manualAmount?.trim()
+      ? 99
+      : hasAmount
+      ? clampConfidence(overallBase + 6)
+      : 22,
+    date: hasDate
+      ? clampConfidence(overallBase + 3)
+      : 22,
+  }
+
+  const fieldSource: Record<FieldKey, 'manual' | 'ocr' | 'missing'> = {
+    merchant: params.manualMerchant?.trim() ? 'manual' : hasMerchant ? 'ocr' : 'missing',
+    amount: params.manualAmount?.trim() ? 'manual' : hasAmount ? 'ocr' : 'missing',
+    date: hasDate ? 'ocr' : 'missing',
+  }
+
+  return { fieldConfidence, fieldSource }
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Standard (RLS) client for auth — admin client only for writes
@@ -271,6 +318,14 @@ export async function POST(request: NextRequest) {
       date: extracted?.date || new Date().toISOString().split('T')[0],
       category: (manualCategory && manualCategory.trim()) || extracted?.category || 'other',
     }
+
+    const { fieldConfidence, fieldSource } = buildFieldConfidence({
+      extracted,
+      manualMerchant,
+      manualAmount,
+    })
+    extracted.field_confidence = fieldConfidence
+    extracted.field_source = fieldSource
 
     // Unreadable receipt → notify and return early
     if (!extracted.is_readable) {

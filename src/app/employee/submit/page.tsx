@@ -363,6 +363,27 @@ function SubmitClaimForm() {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: curr || 'INR' }).format(amt)
   }
 
+  const getFieldConfidenceScore = (field: 'merchant' | 'amount' | 'date') => {
+    const direct = Number(result?.extracted?.field_confidence?.[field])
+    if (Number.isFinite(direct)) return Math.max(1, Math.min(99, Math.round(direct)))
+
+    const overall = result?.extracted?.confidence
+    const base = overall === 'high' ? 86 : overall === 'medium' ? 70 : 56
+    const value = result?.extracted?.[field]
+    const missing = value == null || value === '' || value === 'Unknown Merchant' || value === 'Unknown'
+    return missing ? 22 : base
+  }
+
+  const getFieldStatusLabel = (field: 'merchant' | 'amount' | 'date', score: number) => {
+    const source = result?.extracted?.field_source?.[field]
+    if (source === 'manual') return 'manual override'
+
+    const value = result?.extracted?.[field]
+    const missing = value == null || value === '' || value === 'Unknown Merchant' || value === 'Unknown'
+    if (missing) return 'not detected'
+    return score >= 75 ? 'auto-detected' : 'guessed'
+  }
+
   return (
     <div className="space-y-6 max-w-lg mx-auto md:max-w-none">
       <div>
@@ -646,17 +667,37 @@ function SubmitClaimForm() {
                   : result.extracted.confidence === 'medium' ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800'
                   : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'
                 }`}>{(result.extracted.confidence || 'unknown').toUpperCase()} CONFIDENCE</span>
-                {(['merchant', 'amount', 'date'] as const).map((field) => (
-                  <div key={field} className="flex items-center gap-1 text-xs text-zinc-600 dark:text-zinc-400">
-                    {result.extracted[field] != null
-                      ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                      : <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
-                    <span className="capitalize">{field}:</span>
-                    <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                      {result.extracted[field] != null ? String(result.extracted[field]) : 'not detected'}
-                    </span>
-                  </div>
-                ))}
+              </div>
+
+              <div className="mt-4 grid gap-2">
+                {(['merchant', 'amount', 'date'] as const).map((field) => {
+                  const score = getFieldConfidenceScore(field)
+                  const statusLabel = getFieldStatusLabel(field, score)
+                  const rawValue = result.extracted?.[field]
+                  const fieldValue = rawValue == null || rawValue === '' ? 'not detected' : String(rawValue)
+                  return (
+                    <div key={field} className="rounded-md border border-zinc-200 p-2 dark:border-zinc-800">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs uppercase text-zinc-500">{field}</p>
+                          <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200 truncate">{fieldValue}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{score}%</p>
+                          <p className="text-[11px] text-zinc-500">{statusLabel}</p>
+                        </div>
+                      </div>
+                      <div className="mt-1.5 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${
+                            score >= 80 ? 'bg-emerald-500' : score >= 60 ? 'bg-amber-500' : 'bg-red-500'
+                          }`}
+                          style={{ width: `${score}%` }}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           </div>
