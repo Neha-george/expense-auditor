@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
     const resolvedClaims: ClaimRow[] = [...(claims || [])]
 
     // Best-effort backfill for legacy rows missing extracted receipt fields.
-    const candidates = resolvedClaims.filter(needsExtractionBackfill).slice(0, 10)
+    const candidates = resolvedClaims.filter(needsExtractionBackfill)
     for (const claim of candidates) {
       if (!claim.receipt_url) continue
 
