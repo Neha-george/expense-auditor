@@ -83,7 +83,7 @@ export default function SpendLimitsPage() {
           seniority: s,
           category: c,
           monthly_limit: limits[s][c],
-          currency: 'USD'
+          currency: 'INR'
         })
       }
     }
@@ -123,7 +123,7 @@ export default function SpendLimitsPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-zinc-950 dark:text-zinc-50">Spend Limits</h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Define strict monthly budgets ($ USD) per employee tier and expense category.
+            Define strict monthly budgets (INR) per employee tier and expense category.
           </p>
         </div>
         <button

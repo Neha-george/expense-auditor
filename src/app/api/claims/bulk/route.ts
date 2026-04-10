@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
         const args = {
           merchant: row.merchant || 'Unknown',
           amount,
-          currency: row.currency || 'USD',
+          currency: row.currency || 'INR',
           date: row.date || new Date().toISOString().split('T')[0],
           category,
           businessPurpose: row.business_purpose || '',

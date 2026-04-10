@@ -32,7 +32,7 @@ export default function MyClaimsPage() {
 
   const formatCurrency = (amt: number | null, curr: string | null) => {
     if (amt == null) return 'N/A'
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: curr || 'USD' }).format(amt)
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: curr || 'INR' }).format(amt)
   }
 
   const getStatusColor = (status: string) => {

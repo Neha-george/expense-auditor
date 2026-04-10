@@ -87,7 +87,7 @@ export async function PATCH(
       sendEmail({
         to: p.email,
         subject: `Expense Claim ${verdict.toUpperCase()} (Manual Review) - PolicyLens`,
-        html: verdictTemplate(p.full_name, data.merchant ?? 'Unknown', amt, data.currency ?? 'USD', verdict, data.ai_reason ?? 'Manual review', note)
+        html: verdictTemplate(p.full_name, data.merchant ?? 'Unknown', amt, data.currency ?? 'INR', verdict, data.ai_reason ?? 'Manual review', note)
       })
     }
 

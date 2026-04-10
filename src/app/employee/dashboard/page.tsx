@@ -105,7 +105,7 @@ export default function EmployeeDashboard() {
     return <div className="p-8 text-center text-zinc-500">Loading dashboard...</div>
   }
 
-  const formatCurr = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n)
+  const formatCurr = (n: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(n)
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">

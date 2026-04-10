@@ -135,7 +135,7 @@ export default function BulkImportPage() {
     toast.success("Dry Run Audit Complete")
   }
 
-  const formatCurr = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n)
+  const formatCurr = (n: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(n)
 
   return (
     <div className="space-y-6">

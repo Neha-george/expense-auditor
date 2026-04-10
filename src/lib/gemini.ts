@@ -68,7 +68,7 @@ Return ONLY a valid JSON object with exactly these fields:
   "is_readable": true or false,
   "merchant": "merchant name or null",
   "amount": number or null,
-  "currency": "3-letter currency code or USD",
+  "currency": "3-letter currency code or INR",
   "date": "YYYY-MM-DD or null",
   "category": one of: "meals","travel","accommodation","transport","office","entertainment","other",
   "confidence": "high", "medium", or "low"

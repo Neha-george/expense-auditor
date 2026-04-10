@@ -106,7 +106,7 @@ export default function AdminDashboardPage() {
   }, [])
 
   const formatCurrency = (amt: number) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amt)
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amt)
   }
 
   if (loading) {

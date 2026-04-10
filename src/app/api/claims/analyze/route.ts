@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
           is_readable: true,
           merchant: manualMerchant || 'Unknown Merchant (OCR Failed)',
           amount: Number(manualAmount) || 0,
-          currency: 'USD',
+          currency: 'INR',
           date: new Date().toISOString().split('T')[0],
           category: manualCategory || 'other',
           confidence: 'low'
@@ -317,7 +317,7 @@ export async function POST(request: NextRequest) {
       const args = {
         merchant: manualMerchant || extracted.merchant || 'Unknown',
         amount: Number(manualAmount) || extracted.amount || 0,
-        currency: extracted.currency || 'USD',
+        currency: extracted.currency || 'INR',
         date: extracted.date || new Date().toISOString().split('T')[0],
         category: manualCategory || extracted.category || 'other',
         businessPurpose,
@@ -399,14 +399,14 @@ export async function POST(request: NextRequest) {
         sendEmail({
           to: profile.email,
           subject: `Expense Claim ${verdictData.verdict.toUpperCase()} - PolicyLens`,
-          html: verdictTemplate(profile.full_name, extracted.merchant ?? 'Unknown', amt, extracted.currency ?? 'USD', verdictData.verdict, verdictData.reason)
+          html: verdictTemplate(profile.full_name, extracted.merchant ?? 'Unknown', amt, extracted.currency ?? 'INR', verdictData.verdict, verdictData.reason)
         })
       } else if (verdictData.verdict === 'flagged') {
         const amt = Number(extracted.amount || 0)
         sendEmail({
           to: profile.email,
           subject: 'Claim Submitted Successfully - PolicyLens',
-          html: submissionConfirmationTemplate(profile.full_name, extracted.merchant ?? 'Unknown', amt, extracted.currency ?? 'USD')
+          html: submissionConfirmationTemplate(profile.full_name, extracted.merchant ?? 'Unknown', amt, extracted.currency ?? 'INR')
         })
         // Alert only admins within this org
         admin
@@ -420,7 +420,7 @@ export async function POST(request: NextRequest) {
               sendEmail({
                 to: emails,
                 subject: 'New Claim Flagged for Review - PolicyLens',
-                html: adminFlaggedAlertTemplate(profile.full_name, extracted.merchant ?? 'Unknown', amt, extracted.currency ?? 'USD', verdictData.reason)
+                html: adminFlaggedAlertTemplate(profile.full_name, extracted.merchant ?? 'Unknown', amt, extracted.currency ?? 'INR', verdictData.reason)
               })
             }
           })

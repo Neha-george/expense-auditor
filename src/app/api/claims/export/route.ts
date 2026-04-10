@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
            escapeCsv(glCode),
            escapeCsv('Tax Exempt'), // Assuming tax exempt or handled by Xero defaults
            escapeCsv(`Claim ${claim.id.substring(0,8)}`), // Reference
-           escapeCsv(claim.currency || 'USD')
+           escapeCsv(claim.currency || 'INR')
         ].join(','))
       }
 
