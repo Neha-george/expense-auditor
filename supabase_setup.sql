@@ -193,15 +193,18 @@ create policy "users see own profile"
   on profiles for select
   using (auth.uid() = id);
 
+create or replace function get_auth_user_role()
+returns text
+language sql stable security definer as $$
+  select role from profiles where id = auth.uid();
+$$;
+
 -- Admins see all profiles within their org
 create policy "admins see org profiles"
   on profiles for select
   using (
     auth_user_org_id() = organisation_id
-    and exists (
-      select 1 from profiles p2
-      where p2.id = auth.uid() and p2.role = 'admin'
-    )
+    and get_auth_user_role() = 'admin'
   );
 
 -- Users can update their own profile
