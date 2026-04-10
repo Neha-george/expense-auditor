@@ -331,6 +331,14 @@ function SubmitClaimForm() {
                   {result.verdict.verdict}
                 </h3>
                 <p className="mt-2 text-zinc-700 dark:text-zinc-300 font-medium">{result.verdict.reason}</p>
+                
+                {result.verdict.policy_reference && (
+                  <div className="mt-3 p-3 bg-white/50 dark:bg-black/20 rounded border border-zinc-200/50 dark:border-zinc-800/50 text-sm">
+                    <p className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-1">Aligning Policy Clause</p>
+                    <p className="text-zinc-700 dark:text-zinc-300 italic">"{result.verdict.policy_reference}"</p>
+                  </div>
+                )}
+
                 {Array.isArray(result.compared_policies) && result.compared_policies.length > 0 && (
                   <div className="mt-3 text-sm text-zinc-600 dark:text-zinc-300">
                     <p className="font-medium">Compared Policies:</p>
