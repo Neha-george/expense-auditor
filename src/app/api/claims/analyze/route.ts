@@ -182,6 +182,9 @@ export async function POST(request: NextRequest) {
     const manualMerchant = formData.get('manual_merchant') as string | null
     const manualAmount = formData.get('manual_amount') as string | null
     const manualCategory = formData.get('manual_category') as string | null
+    const manualCurrency = formData.get('manual_currency') as string | null
+    const manualDate = formData.get('manual_date') as string | null
+    const quickExtractSuggestionRaw = formData.get('quick_extract_suggestion') as string | null
 
     if (!file) return NextResponse.json({ error: 'Receipt file required' }, { status: 400 })
     if (file.size > MAX_SIZE)
@@ -314,8 +317,8 @@ export async function POST(request: NextRequest) {
       is_readable: extracted?.is_readable !== false,
       merchant: (manualMerchant && manualMerchant.trim()) || extracted?.merchant || 'Unknown Merchant',
       amount: manualAmount ? Number(manualAmount) : (Number.isFinite(Number(extracted?.amount)) ? Number(extracted.amount) : 0),
-      currency: extracted?.currency || 'INR',
-      date: extracted?.date || new Date().toISOString().split('T')[0],
+      currency: (manualCurrency && manualCurrency.trim().toUpperCase()) || extracted?.currency || 'INR',
+      date: (manualDate && manualDate.trim()) || extracted?.date || new Date().toISOString().split('T')[0],
       category: (manualCategory && manualCategory.trim()) || extracted?.category || 'other',
     }
 
@@ -616,6 +619,69 @@ export async function POST(request: NextRequest) {
       .select().single()
 
     if (claimError) throw claimError
+
+    if (quickExtractSuggestionRaw) {
+      try {
+        const suggestion = JSON.parse(quickExtractSuggestionRaw)
+
+        const normalizeStr = (v: unknown) => String(v ?? '').trim().toLowerCase()
+        const normalizeAmt = (v: unknown) => {
+          const n = Number(v)
+          return Number.isFinite(n) ? Number(n.toFixed(2)) : null
+        }
+
+        const suggested = {
+          merchant: normalizeStr(suggestion?.merchant),
+          amount: normalizeAmt(suggestion?.amount),
+          currency: normalizeStr(suggestion?.currency || 'INR'),
+          date: normalizeStr(suggestion?.date),
+        }
+
+        const finalValues = {
+          merchant: normalizeStr(manualMerchant || extracted?.merchant),
+          amount: normalizeAmt(manualAmount || extracted?.amount),
+          currency: normalizeStr((manualCurrency || extracted?.currency || 'INR')),
+          date: normalizeStr((manualDate || extracted?.date)),
+        }
+
+        const correctedFields: string[] = []
+        const comparableFields = ['merchant', 'amount', 'currency', 'date'] as const
+        let compared = 0
+
+        for (const field of comparableFields) {
+          const suggestionValue = suggested[field]
+          const finalValue = finalValues[field]
+          if (suggestionValue == null || suggestionValue === '' || finalValue == null || finalValue === '') continue
+          compared += 1
+          if (suggestionValue !== finalValue) correctedFields.push(field)
+        }
+
+        const correctionRate = compared > 0 ? correctedFields.length / compared : 0
+
+        await admin.from('audit_logs').insert({
+          organisation_id: orgId,
+          actor_id: user.id,
+          action: 'quick_extract_correction',
+          entity_type: 'claim',
+          entity_id: claim.id,
+          metadata: {
+            suggestion,
+            final: {
+              merchant: manualMerchant || extracted?.merchant || null,
+              amount: manualAmount ? Number(manualAmount) : extracted?.amount ?? null,
+              currency: (manualCurrency || extracted?.currency || 'INR')?.toUpperCase(),
+              date: manualDate || extracted?.date || null,
+            },
+            corrected_fields: correctedFields,
+            compared_fields: compared,
+            correction_rate: correctionRate,
+            suggestion_confidence: Number(suggestion?.confidence ?? 0),
+          },
+        })
+      } catch (quickExtractLogErr: any) {
+        console.warn('quick_extract_correction audit log failed:', quickExtractLogErr?.message)
+      }
+    }
 
     // ── Step 7: Fire-and-forget emails ───────────────────────
     if (profile?.email) {

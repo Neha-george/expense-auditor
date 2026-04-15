@@ -98,6 +98,8 @@ function SubmitClaimForm() {
   const [manualMerchant, setManualMerchant] = useState('')
   const [manualAmount, setManualAmount] = useState('')
   const [manualCategory, setManualCategory] = useState('')
+  const [manualCurrency, setManualCurrency] = useState('INR')
+  const [manualDate, setManualDate] = useState('')
   const [qualityWarning, setQualityWarning] = useState<string | null>(null)
   const [budget, setBudget] = useState<Record<string, { limit: number; spent: number; currency: string }> | null>(null)
   const [isOnline, setIsOnline] = useState(true)
@@ -109,6 +111,21 @@ function SubmitClaimForm() {
 
   // Feature 4: INR equivalent for foreign currencies
   const [inrEquivalent, setInrEquivalent] = useState<number | null>(null)
+  const [quickExtractLoading, setQuickExtractLoading] = useState(false)
+  const [quickExtracted, setQuickExtracted] = useState<{
+    merchant: string | null
+    amount: number | null
+    currency: string
+    date: string | null
+    confidence: number
+  } | null>(null)
+  const [quickExtractBaseline, setQuickExtractBaseline] = useState<{
+    merchant: string | null
+    amount: number | null
+    currency: string
+    date: string | null
+    confidence: number
+  } | null>(null)
 
   // Fetch all category budgets once on mount
   useEffect(() => {
@@ -223,10 +240,58 @@ function SubmitClaimForm() {
         setPreview(null)
     }
     setFile(processedFile)
+    setQuickExtracted(null)
+    setQuickExtractBaseline(null)
     
     // Check quality of the final processed file
     const warning = await checkImageQuality(processedFile)
     setQualityWarning(warning)
+
+    if (processedFile.type.startsWith('image/')) {
+      await quickExtractClientSide(processedFile)
+    }
+  }
+
+  const quickExtractClientSide = async (receiptFile: File) => {
+    setQuickExtractLoading(true)
+    try {
+      const fd = new FormData()
+      fd.append('receipt', receiptFile)
+
+      const res = await fetch('/api/claims/quick-extract', {
+        method: 'POST',
+        body: fd,
+      })
+
+      if (!res.ok) throw new Error('Quick extract failed')
+
+      const data = await res.json()
+      const normalized = {
+        merchant: data?.merchant ? String(data.merchant) : null,
+        amount: Number.isFinite(Number(data?.amount)) ? Number(data.amount) : null,
+        currency: String(data?.currency || 'INR').toUpperCase(),
+        date: data?.date ? String(data.date) : null,
+        confidence: Math.max(0, Math.min(1, Number(data?.confidence ?? 0.5))),
+      }
+
+      setQuickExtracted(normalized)
+      setQuickExtractBaseline(normalized)
+
+      if (!manualMerchant && normalized.merchant) setManualMerchant(normalized.merchant)
+      if (!manualAmount && normalized.amount != null) setManualAmount(String(normalized.amount))
+      if (normalized.currency) setManualCurrency(normalized.currency)
+      if (normalized.date) setManualDate(normalized.date)
+
+      if (normalized.confidence >= 0.8) {
+        toast.success('Receipt read successfully')
+      } else {
+        toast.warning('Please verify these fields')
+      }
+    } catch {
+      toast.info('Quick autofill unavailable. You can still submit manually.')
+    } finally {
+      setQuickExtractLoading(false)
+    }
   }
 
   const handleCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -280,6 +345,9 @@ function SubmitClaimForm() {
       if (manualMerchant) formData.append('manual_merchant', manualMerchant)
       if (manualAmount) formData.append('manual_amount', manualAmount)
       if (manualCategory) formData.append('manual_category', manualCategory)
+      if (manualCurrency) formData.append('manual_currency', manualCurrency)
+      if (manualDate) formData.append('manual_date', manualDate)
+      if (quickExtractBaseline) formData.append('quick_extract_suggestion', JSON.stringify(quickExtractBaseline))
       
       if (resubmitId) {
         formData.append('parent_claim_id', resubmitId)
@@ -315,6 +383,10 @@ function SubmitClaimForm() {
     setQualityWarning(null)
     setProgressStep(0)
     setInrEquivalent(null)
+    setManualCurrency('INR')
+    setManualDate('')
+    setQuickExtracted(null)
+    setQuickExtractBaseline(null)
     router.replace('/employee/submit')
   }
 
@@ -439,6 +511,15 @@ function SubmitClaimForm() {
               </div>
             ) : (
               <div className="space-y-4">
+                {quickExtractLoading && (
+                  <div className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+                    <div className="animate-pulse space-y-2">
+                      <div className="h-3 w-40 rounded bg-zinc-200 dark:bg-zinc-700" />
+                      <div className="h-8 w-full rounded bg-zinc-100 dark:bg-zinc-800" />
+                    </div>
+                  </div>
+                )}
+
                 <div className="rounded-lg border border-zinc-200 overflow-hidden bg-zinc-50 p-2 dark:border-zinc-800 dark:bg-zinc-950 flex justify-center">
                   {preview ? (
                     <img src={preview} alt="Receipt preview" className="max-h-48 object-contain rounded" />
@@ -488,6 +569,11 @@ function SubmitClaimForm() {
               
               <div className="mt-4 space-y-3 pt-4 border-t border-zinc-100 dark:border-zinc-800">
                 <p className="text-xs text-zinc-500 mb-2">Override Extracted Values (Optional{resubmitId ? ' for resubmission' : ''})</p>
+                {quickExtracted && (
+                  <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-300">
+                    AI suggested values (confidence {Math.round((quickExtracted.confidence || 0) * 100)}%)
+                  </div>
+                )}
                 <div>
                   <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Merchant</label>
                   <input
@@ -508,6 +594,27 @@ function SubmitClaimForm() {
                     onChange={e => setManualAmount(e.target.value)}
                     placeholder="e.g. 1578"
                   />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Currency</label>
+                    <input
+                      type="text"
+                      className="w-full mt-1 rounded-md border border-zinc-200 bg-transparent px-3 min-h-[48px] text-sm dark:border-zinc-800"
+                      value={manualCurrency}
+                      onChange={e => setManualCurrency(e.target.value.toUpperCase())}
+                      placeholder="INR"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Date</label>
+                    <input
+                      type="date"
+                      className="w-full mt-1 rounded-md border border-zinc-200 bg-transparent px-3 min-h-[48px] text-sm dark:border-zinc-800"
+                      value={manualDate}
+                      onChange={e => setManualDate(e.target.value)}
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Category</label>
