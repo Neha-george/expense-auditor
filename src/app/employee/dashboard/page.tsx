@@ -89,11 +89,24 @@ export default function EmployeeDashboard() {
       })
 
       // Format for Recharts
-      const data = allCategories.map(cat => ({
-        name: cat.charAt(0).toUpperCase() + cat.slice(1),
-        Spent: categoryMap[cat].spend,
-        Limit: categoryMap[cat].limit
-      })).filter(d => d.Limit > 0 || d.Spent > 0) // Only show relevant categories
+      const categoryRows = allCategories.map(cat => {
+        const spent = Number(Number(categoryMap[cat].spend || 0).toFixed(2))
+        const limit = Number(Number(categoryMap[cat].limit || 0).toFixed(2))
+        return {
+          key: cat,
+          name: cat.charAt(0).toUpperCase() + cat.slice(1),
+          spent,
+          limit,
+        }
+      })
+
+      const data = categoryRows
+        .map((row) => ({
+          name: row.name,
+          Spent: row.spent,
+          Limit: row.limit,
+        }))
+        .filter(d => d.Limit > 0 || d.Spent > 0) // Only show relevant categories
 
       setChartData(data)
 
@@ -101,13 +114,13 @@ export default function EmployeeDashboard() {
       const now = new Date()
       const daysElapsed = now.getDate()
       const totalDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-      const projList = allCategories
-        .map(cat => {
-          const { spend, limit } = categoryMap[cat]
+      const projList = categoryRows
+        .map((row) => {
+          const { spent: spend, limit } = row
           if (limit === 0) return null
           const dailyRate = daysElapsed > 0 ? spend / daysElapsed : 0
           const projected = Math.round(dailyRate * totalDays)
-          return { name: cat.charAt(0).toUpperCase() + cat.slice(1), spent: spend, projected, limit, currency: 'INR' }
+          return { name: row.name, spent: spend, projected, limit, currency: 'INR' }
         })
         .filter(Boolean) as typeof projections
       setProjections(projList)
@@ -190,7 +203,7 @@ export default function EmployeeDashboard() {
                 <Tooltip 
                   cursor={{ fill: 'transparent' }}
                   contentStyle={{ borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#18181b', color: '#fff' }}
-                  formatter={(value: any) => [formatCurr(Number(value)), undefined]}
+                  formatter={(value: any, name: any) => [formatCurr(Number(value)), name === 'Spent' ? 'Current Spent' : 'Limit']}
                 />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
                 <Bar dataKey="Spent" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={50} />
