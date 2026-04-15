@@ -186,6 +186,8 @@ export async function POST(request: NextRequest) {
     const manualDate = formData.get('manual_date') as string | null
     const quickExtractSuggestionRaw = formData.get('quick_extract_suggestion') as string | null
     const precheckQueriesRaw = formData.get('precheck_queries') as string | null
+    const parsedManualAmount = manualAmount == null ? Number.NaN : Number(String(manualAmount).trim())
+    const hasManualAmount = Number.isFinite(parsedManualAmount) && parsedManualAmount > 0
 
     if (!file) return NextResponse.json({ error: 'Receipt file required' }, { status: 400 })
     if (file.size > MAX_SIZE)
@@ -317,7 +319,7 @@ export async function POST(request: NextRequest) {
     let hasValidAmount = Number.isFinite(extractedAmount) && extractedAmount > 0
 
     // Amount rescue pass: run a focused extractor before falling back to 0.
-    if (!hasValidAmount && !manualAmount) {
+    if (!hasValidAmount && !hasManualAmount) {
       try {
         const rescuedAmount = await withTimeout(
           extractReceiptAmountOnly(imageBase64, actualType),
@@ -340,7 +342,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Log extraction details for debugging
-    if (!hasValidAmount && !manualAmount) {
+    if (!hasValidAmount && !hasManualAmount) {
       console.warn(`[Receipt Analysis] Amount extraction failed or returned 0/null:`, {
         extractedRaw: extracted?.amount,
         extractedType: typeof extracted?.amount,
@@ -355,14 +357,14 @@ export async function POST(request: NextRequest) {
       ...extracted,
       is_readable: extracted?.is_readable !== false,
       merchant: (manualMerchant && manualMerchant.trim()) || extracted?.merchant || 'Unknown Merchant',
-      amount: manualAmount ? Number(manualAmount) : (hasValidAmount ? extractedAmount : 0),
+      amount: hasManualAmount ? parsedManualAmount : (hasValidAmount ? extractedAmount : 0),
       currency: (manualCurrency && manualCurrency.trim().toUpperCase()) || extracted?.currency || 'INR',
       date: (manualDate && manualDate.trim()) || extracted?.date || new Date().toISOString().split('T')[0],
       category: (manualCategory && manualCategory.trim()) || extracted?.category || 'other',
     }
 
     // Permanent guardrail: do not store invalid zero amounts unless user explicitly overrides.
-    if (!manualAmount && (!Number.isFinite(Number(extracted.amount)) || Number(extracted.amount) <= 0)) {
+    if (!hasManualAmount && (!Number.isFinite(Number(extracted.amount)) || Number(extracted.amount) <= 0)) {
       return NextResponse.json(
         {
           success: false,
@@ -384,7 +386,7 @@ export async function POST(request: NextRequest) {
     const { fieldConfidence, fieldSource } = buildFieldConfidence({
       extracted,
       manualMerchant,
-      manualAmount,
+      manualAmount: hasManualAmount ? String(parsedManualAmount) : null,
     })
     extracted.field_confidence = fieldConfidence
     extracted.field_source = fieldSource
@@ -483,7 +485,7 @@ export async function POST(request: NextRequest) {
       startOfMonth.setDate(1)
       startOfMonth.setHours(0,0,0,0)
 
-      const claimAmount = Number(manualAmount) || extracted.amount || 0
+      const claimAmount = hasManualAmount ? parsedManualAmount : (Number(extracted.amount) || 0)
       const claimMerchant = manualMerchant || extracted.merchant || ''
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
 
@@ -599,7 +601,7 @@ export async function POST(request: NextRequest) {
 
       const args = {
         merchant: manualMerchant || extracted.merchant || 'Unknown',
-        amount: Number(manualAmount) || extracted.amount || 0,
+        amount: hasManualAmount ? parsedManualAmount : (Number(extracted.amount) || 0),
         currency: extracted.currency || 'INR',
         date: extracted.date || new Date().toISOString().split('T')[0],
         category: manualCategory || extracted.category || 'other',
@@ -658,7 +660,7 @@ export async function POST(request: NextRequest) {
         parent_claim_id: parentClaimId || null,
         receipt_url: publicUrl,
         merchant: manualMerchant || extracted.merchant,
-        amount: manualAmount ? Number(manualAmount) : extracted.amount,
+        amount: hasManualAmount ? parsedManualAmount : extracted.amount,
         currency: extracted.currency,
         receipt_date: extracted.date,
         category: manualCategory || extracted.category,
@@ -733,7 +735,7 @@ export async function POST(request: NextRequest) {
 
         const finalValues = {
           merchant: normalizeStr(manualMerchant || extracted?.merchant),
-          amount: normalizeAmt(manualAmount || extracted?.amount),
+          amount: normalizeAmt(hasManualAmount ? parsedManualAmount : extracted?.amount),
           currency: normalizeStr((manualCurrency || extracted?.currency || 'INR')),
           date: normalizeStr((manualDate || extracted?.date)),
         }
@@ -762,7 +764,7 @@ export async function POST(request: NextRequest) {
             suggestion,
             final: {
               merchant: manualMerchant || extracted?.merchant || null,
-              amount: manualAmount ? Number(manualAmount) : extracted?.amount ?? null,
+              amount: hasManualAmount ? parsedManualAmount : extracted?.amount ?? null,
               currency: (manualCurrency || extracted?.currency || 'INR')?.toUpperCase(),
               date: manualDate || extracted?.date || null,
             },

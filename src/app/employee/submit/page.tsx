@@ -134,6 +134,13 @@ function SubmitClaimForm() {
     confidence: number
   } | null>(null)
 
+  const parsePositiveAmount = (value: unknown): number | null => {
+    const raw = String(value ?? '').trim()
+    if (!raw) return null
+    const n = Number(raw)
+    return Number.isFinite(n) && n > 0 ? n : null
+  }
+
   // Fetch all category budgets once on mount
   useEffect(() => {
     fetch('/api/employee/budget')
@@ -279,7 +286,7 @@ function SubmitClaimForm() {
       const data = await res.json()
       const normalized = {
         merchant: data?.merchant ? String(data.merchant) : null,
-        amount: Number.isFinite(Number(data?.amount)) ? Number(data.amount) : null,
+        amount: parsePositiveAmount(data?.amount),
         currency: String(data?.currency || 'INR').toUpperCase(),
         date: data?.date ? String(data.date) : null,
         confidence: Math.max(0, Math.min(1, Number(data?.confidence ?? 0.5))),
@@ -352,9 +359,10 @@ function SubmitClaimForm() {
       const formData = new FormData()
       formData.append('receipt', file)
       formData.append('business_purpose', purpose)
+      const validManualAmount = parsePositiveAmount(manualAmount)
 
       if (manualMerchant) formData.append('manual_merchant', manualMerchant)
-      if (manualAmount) formData.append('manual_amount', manualAmount)
+      if (validManualAmount != null) formData.append('manual_amount', String(validManualAmount))
       if (manualCategory) formData.append('manual_category', manualCategory)
       if (manualCurrency) formData.append('manual_currency', manualCurrency)
       if (manualDate) formData.append('manual_date', manualDate)
@@ -440,8 +448,9 @@ function SubmitClaimForm() {
         const fd = new FormData()
         fd.append('receipt', item.file)
         fd.append('business_purpose', purpose.length >= 10 ? purpose : 'Batch submission')
+        const validManualAmount = parsePositiveAmount(manualAmount)
         if (manualMerchant) fd.append('manual_merchant', manualMerchant)
-        if (manualAmount) fd.append('manual_amount', manualAmount)
+        if (validManualAmount != null) fd.append('manual_amount', String(validManualAmount))
         if (manualCategory) fd.append('manual_category', manualCategory)
         const res = await fetch('/api/claims/analyze', { method: 'POST', body: fd })
         const data = await res.json()
