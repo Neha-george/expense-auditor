@@ -42,8 +42,8 @@ async function run() {
     console.log('[debug] first h1:', heading)
     await page.screenshot({ path: path.join(process.cwd(), 'scripts', 'manual-precheck-submit-page.png'), fullPage: true })
 
-    const drawerToggle = page.locator('button:has-text("Expense Pre-Checker")')
-    await drawerToggle.waitFor({ timeout: 20000 })
+    const drawerToggle = page.locator('button', { hasText: 'Expense Pre-Checker' })
+    await drawerToggle.waitFor({ timeout: 45000 })
     await drawerToggle.click()
 
     const question = 'Can I expense INR 8000 client dinner for 4 people while discussing Q3 renewal opportunities?'
