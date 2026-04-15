@@ -387,11 +387,14 @@ create table audit_logs (
   action          text not null,
   entity_type     text not null,
   entity_id       uuid not null,
+  precheck_queries jsonb,
   metadata        jsonb,
   ip_address      text,
   user_agent      text,
   created_at      timestamptz default now()
 );
+
+alter table audit_logs add column if not exists precheck_queries jsonb;
 
 alter table audit_logs enable row level security;
 

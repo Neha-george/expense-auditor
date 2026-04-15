@@ -47,6 +47,8 @@ Please use these references for decision-making, or ask your admin for final cla
 
 export async function POST(request: NextRequest) {
   try {
+    const mode = request.nextUrl.searchParams.get('mode') === 'precheck' ? 'precheck' : 'default'
+
     const supabase = await createServerSupabase()
     const admin = createAdminSupabase()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -83,7 +85,18 @@ export async function POST(request: NextRequest) {
 
     await admin.from('request_logs').insert({ user_id: user.id, endpoint: 'chat' })
 
-    const { message } = await request.json()
+    const payload = await request.json()
+    const message = String(payload?.message || '')
+    const history = Array.isArray(payload?.history)
+      ? payload.history
+          .map((item: any) => ({
+            role: item?.role === 'assistant' ? 'assistant' : 'user',
+            content: String(item?.content || '').trim(),
+          }))
+          .filter((item: any) => item.content.length > 0)
+          .slice(-12)
+      : []
+
     if (!message?.trim()) return new Response('Message required', { status: 400 })
 
     // Resolve active policy list (used for context and admin notifications)
@@ -157,11 +170,32 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const systemPrompt = `You are a helpful expense policy assistant for employees.
+    const historyContext = history.length
+      ? history.map((h: any) => `${h.role.toUpperCase()}: ${h.content}`).join('\n')
+      : 'No prior conversation.'
+
+    const systemPrompt = mode === 'precheck'
+      ? `You are a pre-submission expense policy checker.
+The user is asking hypotheticals before uploading receipts.
+Your job is to estimate approval likelihood based ONLY on policy excerpts.
+Start the response with exactly one label line:
+Likelihood: Approved OR Likely Flagged OR Likely Rejected
+Then provide concise reasoning and any conditions needed for approval.
+If policy support is unclear, choose Likely Flagged and explain what evidence is missing.
+
+CONVERSATION CONTEXT:
+${historyContext}
+
+POLICY EXCERPTS:
+${policyContext}`
+      : `You are a helpful expense policy assistant for employees.
 Answer questions about the company expense policy clearly and concisely.
 Base your answers ONLY on the policy excerpts provided.
 If the answer is not in the policy, say so honestly.
 If no policy excerpt supports the question, explicitly say it is not covered by current policy and advise employee to seek admin clarification.
+
+CONVERSATION CONTEXT:
+${historyContext}
 
 POLICY EXCERPTS:
 ${policyContext}`

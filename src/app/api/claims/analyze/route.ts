@@ -185,6 +185,7 @@ export async function POST(request: NextRequest) {
     const manualCurrency = formData.get('manual_currency') as string | null
     const manualDate = formData.get('manual_date') as string | null
     const quickExtractSuggestionRaw = formData.get('quick_extract_suggestion') as string | null
+    const precheckQueriesRaw = formData.get('precheck_queries') as string | null
 
     if (!file) return NextResponse.json({ error: 'Receipt file required' }, { status: 400 })
     if (file.size > MAX_SIZE)
@@ -619,6 +620,27 @@ export async function POST(request: NextRequest) {
       .select().single()
 
     if (claimError) throw claimError
+
+    if (precheckQueriesRaw) {
+      try {
+        const precheckQueries = JSON.parse(precheckQueriesRaw)
+        await admin.from('audit_logs').insert({
+          organisation_id: orgId,
+          actor_id: user.id,
+          action: 'precheck_converted_submission',
+          entity_type: 'claim',
+          entity_id: claim.id,
+          precheck_queries: precheckQueries,
+          metadata: {
+            converted: true,
+            summary: String(precheckQueries?.summary || ''),
+            message_count: Array.isArray(precheckQueries?.messages) ? precheckQueries.messages.length : 0,
+          },
+        })
+      } catch (precheckLogErr: any) {
+        console.warn('precheck conversion audit log failed:', precheckLogErr?.message)
+      }
+    }
 
     if (quickExtractSuggestionRaw) {
       try {

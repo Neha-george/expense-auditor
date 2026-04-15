@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { CheckCircle2, XCircle, AlertCircle, Loader2, UploadCloud, RefreshCw, Camera, TrendingUp, PlusCircle, Layers, ArrowRight } from 'lucide-react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import imageCompression from 'browser-image-compression'
+import PreCheckDrawer from '@/components/PreCheckDrawer'
 
 async function checkImageQuality(file: File): Promise<string | null> {
   return new Promise((resolve) => {
@@ -89,6 +90,12 @@ function SubmitClaimForm() {
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
   const [purpose, setPurpose] = useState('')
+  const [precheckSuggestedPurpose, setPrecheckSuggestedPurpose] = useState('')
+  const [precheckSession, setPrecheckSession] = useState<{
+    summary: string
+    messages: Array<{ role: 'user' | 'assistant'; content: string; createdAt: string; likelihood?: string }>
+    updatedAt: string
+  } | null>(null)
   const [loading, setLoading] = useState(false)
   const [progressStep, setProgressStep] = useState(0)
   const [result, setResult] = useState<any>(null)
@@ -240,6 +247,10 @@ function SubmitClaimForm() {
         setPreview(null)
     }
     setFile(processedFile)
+    if (!purpose.trim() && precheckSuggestedPurpose.trim()) {
+      setPurpose(precheckSuggestedPurpose.trim())
+      toast.info('Business purpose auto-filled from your pre-check conversation.')
+    }
     setQuickExtracted(null)
     setQuickExtractBaseline(null)
     
@@ -348,6 +359,16 @@ function SubmitClaimForm() {
       if (manualCurrency) formData.append('manual_currency', manualCurrency)
       if (manualDate) formData.append('manual_date', manualDate)
       if (quickExtractBaseline) formData.append('quick_extract_suggestion', JSON.stringify(quickExtractBaseline))
+      if (precheckSession?.messages?.length) {
+        formData.append(
+          'precheck_queries',
+          JSON.stringify({
+            summary: precheckSession.summary || precheckSuggestedPurpose || null,
+            updated_at: precheckSession.updatedAt,
+            messages: precheckSession.messages.slice(-20),
+          })
+        )
+      }
       
       if (resubmitId) {
         formData.append('parent_claim_id', resubmitId)
@@ -462,6 +483,16 @@ function SubmitClaimForm() {
 
   return (
     <div className="space-y-6 max-w-lg mx-auto md:max-w-none">
+      <PreCheckDrawer
+        onPurposeSuggestionChange={(summary) => {
+          setPrecheckSuggestedPurpose(summary)
+          if (!purpose.trim() && summary.trim()) setPurpose(summary)
+        }}
+        onSessionChange={(session) => {
+          setPrecheckSession(session)
+        }}
+      />
+
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-zinc-950 dark:text-zinc-50">Submit Claim</h1>
         <p className="text-zinc-500 dark:text-zinc-400">Capture your receipt for AI screening.</p>
