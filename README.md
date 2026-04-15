@@ -76,9 +76,9 @@ Benefit: reduced manual accounting handoff effort.
 
 ```mermaid
 graph TD
-  C[Client App - Next.js UI] --> A[/api/claims/analyze]
-  C --> H[/api/assistant/chat]
-  C --> P[/api/policies/ingest]
+  C[Client App - Next.js UI] --> A["/api/claims/analyze"]
+  C --> H["/api/assistant/chat"]
+  C --> P["/api/policies/ingest"]
   A --> S[(Supabase Storage)]
   A --> D[(Supabase Postgres + pgvector)]
   A --> G[Gemini Models]

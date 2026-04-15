@@ -8,14 +8,14 @@ PolicyLens is built on a modern serverless stack, leveraging edge-ready API rout
 
 ```mermaid
 graph TD
-    Client[Web Client (React / Next.js)]
-    NextJS[Next.js App Router]
-    SupabaseDB[(Supabase PostgreSQL)]
-    SupabaseAuth[Supabase Auth]
-    SupabaseStorage[Supabase Storage]
-    Gemini[Google Gemini 2.0 Flash API]
-    Tesseract[Tesseract.js (Local Fallback)]
-    Resend[Resend Email API]
+    Client["Web Client - React and Next.js"]
+    NextJS["Next.js App Router"]
+    SupabaseDB[("Supabase PostgreSQL")]
+    SupabaseAuth["Supabase Auth"]
+    SupabaseStorage["Supabase Storage"]
+    Gemini["Google Gemini 2.0 Flash API"]
+    Tesseract["Tesseract.js Local Fallback"]
+    Resend["Resend Email API"]
 
     Client <-->|HTTPS / Server Actions| NextJS
     NextJS <-->|REST / SDK| SupabaseAuth
@@ -78,10 +78,10 @@ This is the most complex flow, utilizing primary AI extraction and multiple laye
 ```mermaid
 sequenceDiagram
     participant Emp as Employee
-    participant Next as Next.js (/api/claims/analyze)
+    participant Next as Next.js API claims analyze
     participant Store as Supabase Storage
     participant Gemini as Gemini AI
-    participant DB as Supabase DB (pgvector)
+    participant DB as Supabase DB pgvector
 
     Emp->>Next: Submit Receipt Image + Metadata
     Next->>Store: Upload raw receipt file
