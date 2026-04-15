@@ -247,7 +247,12 @@ export default function EmployeeDashboard() {
                       <TrendingDown className="w-4 h-4 text-emerald-500" />
                     )}
                   </div>
-                  <p className={`text-lg font-bold ${
+                  <p className={`text-xs font-semibold uppercase tracking-wide ${
+                    noSpend ? 'text-zinc-400' : 'text-zinc-500'
+                  }`}>
+                    Projected Month-end Spend
+                  </p>
+                  <p className={`text-lg font-bold mt-1 ${
                     noSpend ? 'text-zinc-400'
                     : willExceed ? 'text-red-700 dark:text-red-400'
                     : 'text-emerald-700 dark:text-emerald-400'
