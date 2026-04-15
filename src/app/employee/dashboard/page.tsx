@@ -166,7 +166,8 @@ export default function EmployeeDashboard() {
 
       {/* Chart Section */}
       <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <h2 className="text-lg font-semibold mb-6 text-zinc-900 dark:text-zinc-100">Category Budgets vs Actuals</h2>
+        <h2 className="text-lg font-semibold mb-1 text-zinc-900 dark:text-zinc-100">Category Budgets vs Actuals</h2>
+        <p className="text-sm text-zinc-500 mb-5">Current month actual spend (blue) versus monthly limit (dark).</p>
         
         {chartData.length > 0 ? (
           <div className="h-[350px] w-full min-w-0">
@@ -174,11 +175,22 @@ export default function EmployeeDashboard() {
               <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#52525b" strokeOpacity={0.2} />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#71717a' }} />
-                <YAxis tickFormatter={(val) => `$${val}`} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#71717a' }} />
+                <YAxis
+                  tickFormatter={(val) =>
+                    new Intl.NumberFormat('en-IN', {
+                      style: 'currency',
+                      currency: 'INR',
+                      maximumFractionDigits: 0,
+                    }).format(Number(val))
+                  }
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 12, fill: '#71717a' }}
+                />
                 <Tooltip 
                   cursor={{ fill: 'transparent' }}
                   contentStyle={{ borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#18181b', color: '#fff' }}
-                  formatter={(value: any) => [`$${value}`, undefined]}
+                  formatter={(value: any) => [formatCurr(Number(value)), undefined]}
                 />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
                 <Bar dataKey="Spent" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={50} />
@@ -197,12 +209,11 @@ export default function EmployeeDashboard() {
       {projections.length > 0 && (
         <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <h2 className="text-lg font-semibold mb-1 text-zinc-900 dark:text-zinc-100">Month-end Spend Projection</h2>
-          <p className="text-sm text-zinc-500 mb-5">Based on your current daily spend rate — will you breach your cap by month end?</p>
+          <p className="text-sm text-zinc-500 mb-5">Projected month-end spend based on current month daily run rate.</p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {projections.map(p => {
               const fmt = (v: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: p.currency, maximumFractionDigits: 0 }).format(v)
               const willExceed = p.projected > p.limit
-              const onTrack = p.projected <= p.limit
               const noSpend = p.spent === 0
               return (
                 <div key={p.name} className={`rounded-lg border p-4 ${
@@ -228,6 +239,7 @@ export default function EmployeeDashboard() {
                     {noSpend ? 'No spend yet' : fmt(p.projected)}
                   </p>
                   <p className="text-xs text-zinc-500 mt-1">projected vs {fmt(p.limit)} limit</p>
+                  <p className="text-xs text-zinc-500 mt-1">current spent: {fmt(p.spent)}</p>
                   {!noSpend && willExceed && (
                     <p className="text-xs font-medium text-red-600 dark:text-red-400 mt-1.5">⚠ Will exceed by {fmt(p.projected - p.limit)}</p>
                   )}
