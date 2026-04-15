@@ -126,20 +126,29 @@ function localFallbackEmbedding(text: string, dimensions = EMBEDDING_DIMENSIONS)
 
 // OCR: extract structured data from a receipt image
 export async function extractReceiptData(imageBase64: string, mimeType: string) {
-  const prompt = `You are an expense receipt OCR system. Analyze this receipt image.
+  const prompt = `You are an expert expense receipt OCR system. Analyze this receipt image carefully.
+
+CRITICAL: You must extract the TOTAL/FINAL AMOUNT paid, not a subtotal or item price.
+
 Return ONLY a valid JSON object with exactly these fields:
 {
   "is_readable": true or false,
   "merchant": "merchant name or null",
-  "amount": number or null,
+  "amount": number or null (MUST be the final total amount, never null if readable),
   "currency": "3-letter currency code or INR",
   "date": "YYYY-MM-DD or null",
   "category": one of: "meals","travel","accommodation","transport","office","entertainment","other",
   "confidence": "high", "medium", or "low"
 }
-If the image is blurry, too dark, or unreadable, set is_readable to false and all other fields to null.
-If is_readable is true, do NOT leave merchant/amount/category empty. Infer best-effort values from the receipt text.
-Use INR when currency is unclear.
+
+IMPORTANT RULES:
+1. Look for: "TOTAL", "Grand Total", "Amount Due", "Final Amount", "Billed Amount", "Total Bill" - in that priority order
+2. If is_readable is true, NEVER leave merchant/amount/category as null - provide best-effort values
+3. For amount: extract only the numeric value (e.g., "₹5000" → 5000, "5,000.00" → 5000)
+4. Strip currency symbols and commas: ₹ $  € £ , are not part of the number
+5. Use INR when currency is unclear or shows ₹ symbol
+6. If text is unreadable/blurry/too dark, set is_readable to false
+
 Return ONLY the JSON. No explanation, no markdown, no code blocks.`
 
   console.log(`[Gemini] Attempting OCR extraction...`)
@@ -151,7 +160,13 @@ Return ONLY the JSON. No explanation, no markdown, no code blocks.`
   const text = result.response.text().trim()
     .replace(/^```json\n?/, '').replace(/\n?```$/, '')
 
-  return JSON.parse(text)
+  const parsed = JSON.parse(text)
+  // Sanitize amount: if it's a string, try to extract numeric value
+  if (parsed.amount && typeof parsed.amount === 'string') {
+    const numMatch = parsed.amount.toString().replace(/[^0-9.]/g, '')
+    parsed.amount = numMatch ? parseFloat(numMatch) : null
+  }
+  return parsed
 }
 
 // Fallback parser for images where primary OCR parser returns weak/missing fields.
@@ -160,7 +175,7 @@ export async function extractReceiptDataBestEffort(imageBase64: string, mimeType
 {
   "is_readable": true or false,
   "merchant": "string or null",
-  "amount": number or null,
+  "amount": number or null (MUST be final total, never null if readable),
   "currency": "3-letter currency code or INR",
   "date": "YYYY-MM-DD or null",
   "category": one of: "meals","travel","accommodation","transport","office","entertainment","other",
@@ -168,11 +183,13 @@ export async function extractReceiptDataBestEffort(imageBase64: string, mimeType
 }
 
 Rules:
-- If text is readable, infer merchant/amount/category with best effort (avoid nulls for these three fields).
-- If amount appears as integer/decimal, return numeric only.
-- Use INR when currency is missing/ambiguous.
-- If truly unreadable, set is_readable to false and others null.
-- Return JSON only.`
+1. Look for TOTAL/Grand Total/Amount Due/Final Amount - extract the bottom-line amount
+2. If text is readable, infer merchant/amount/category with best effort (avoid nulls for these three fields)
+3. Amount must be numeric - strip ₹ $ € £ and commas, e.g., "₹5000" → 5000
+4. Use INR when currency is missing/ambiguous
+5. If truly unreadable, set is_readable to false and others null
+6. For entertainment/hospitality receipts, look for "Total", "Payable", or "Grand Total" rows
+7. Return JSON only.`
 
   console.log(`[Gemini] Attempting best-effort extraction...`)
   const result = await generateContentWithBackoff([
@@ -183,17 +200,26 @@ Rules:
   const text = result.response.text().trim()
     .replace(/^```json\n?/, '').replace(/\n?```$/, '')
 
-  return JSON.parse(text)
+  const parsed = JSON.parse(text)
+  // Sanitize amount: if it's a string, try to extract numeric value
+  if (parsed.amount && typeof parsed.amount === 'string') {
+    const numMatch = parsed.amount.toString().replace(/[^0-9.]/g, '')
+    parsed.amount = numMatch ? parseFloat(numMatch) : null
+  }
+  return parsed
 }
 
 // Text parser: extract structured receipt fields from OCR/PDF text.
 export async function extractReceiptDataFromText(receiptText: string) {
-  const prompt = `You are an expense receipt parser.
-Analyze the receipt text and return ONLY a valid JSON object with exactly these fields:
+  const prompt = `You are an expense receipt parser. Analyze the receipt text carefully.
+
+CRITICAL: Extract the FINAL/TOTAL amount, not a subtotal or tax amount.
+
+Return ONLY a valid JSON object with exactly these fields:
 {
   "is_readable": true or false,
   "merchant": "merchant name or null",
-  "amount": number or null,
+  "amount": number or null (MUST be final total, never null if readable),
   "currency": "3-letter currency code or INR",
   "date": "YYYY-MM-DD or null",
   "category": one of: "meals","travel","accommodation","transport","office","entertainment","other",
@@ -201,10 +227,12 @@ Analyze the receipt text and return ONLY a valid JSON object with exactly these 
 }
 
 Rules:
-- If receipt text is too noisy to infer key fields, set is_readable to false.
-- Prefer INR when currency is not explicit.
-- amount must be numeric only.
-- Return JSON only. No markdown.
+1. Look for lines containing: "TOTAL", "Grand Total", "Amount Due", "Final Amount", "Payable", "Total Bill"
+2. Extract the numeric value after these keywords (e.g., "TOTAL 5000" → 5000)
+3. If readable, do NOT return null for merchant/amount/category - use best effort
+4. Amount must be numeric only - strip ₹ $ € £ symbols and commas
+5. Prefer INR when currency is not explicit
+6. Return JSON only. No markdown.
 
 RECEIPT TEXT:
 ${receiptText.slice(0, 20000)}`
@@ -213,7 +241,13 @@ ${receiptText.slice(0, 20000)}`
   const text = result.response.text().trim()
     .replace(/^```json\n?/, '').replace(/\n?```$/, '')
 
-  return JSON.parse(text)
+  const parsed = JSON.parse(text)
+  // Sanitize amount: if it's a string, try to extract numeric value
+  if (parsed.amount && typeof parsed.amount === 'string') {
+    const numMatch = parsed.amount.toString().replace(/[^0-9.]/g, '')
+    parsed.amount = numMatch ? parseFloat(numMatch) : null
+  }
+  return parsed
 }
 
 type LocalReceipt = {

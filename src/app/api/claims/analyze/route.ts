@@ -313,11 +313,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const extractedAmount = Number(extracted?.amount)
+    const hasValidAmount = Number.isFinite(extractedAmount) && extractedAmount > 0
+    
+    // Log extraction details for debugging
+    if (!hasValidAmount && !manualAmount) {
+      console.warn(`[Receipt Analysis] Amount extraction failed or returned 0/null:`, {
+        extractedRaw: extracted?.amount,
+        extractedType: typeof extracted?.amount,
+        extractedAmount,
+        isFinite: Number.isFinite(extractedAmount),
+        isReadable: extracted?.is_readable,
+        confidence: extracted?.confidence,
+      })
+    }
+
     extracted = {
       ...extracted,
       is_readable: extracted?.is_readable !== false,
       merchant: (manualMerchant && manualMerchant.trim()) || extracted?.merchant || 'Unknown Merchant',
-      amount: manualAmount ? Number(manualAmount) : (Number.isFinite(Number(extracted?.amount)) ? Number(extracted.amount) : 0),
+      amount: manualAmount ? Number(manualAmount) : (hasValidAmount ? extractedAmount : 0),
       currency: (manualCurrency && manualCurrency.trim().toUpperCase()) || extracted?.currency || 'INR',
       date: (manualDate && manualDate.trim()) || extracted?.date || new Date().toISOString().split('T')[0],
       category: (manualCategory && manualCategory.trim()) || extracted?.category || 'other',
