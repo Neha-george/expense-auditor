@@ -29,7 +29,7 @@ function sanitizeDate(value: unknown): string | null {
 
 function sanitizeAmount(value: unknown): number | null {
   const n = Number(value)
-  return Number.isFinite(n) && n >= 0 ? Number(n.toFixed(2)) : null
+  return Number.isFinite(n) && n > 0 ? Number(n.toFixed(2)) : null
 }
 
 function normalizeConfidence(value: unknown): number {
@@ -98,6 +98,9 @@ Return ONLY valid JSON in this exact shape:
 
 Rules:
 - Keep this lightweight and quick.
+- Extract the FINAL amount paid (TOTAL / Grand Total / Amount Due / Payable), not subtotal.
+- Strip currency symbols and separators (e.g., ₹41,500 -> 41500).
+- If final amount cannot be confidently found, return amount as null (do NOT return 0).
 - If uncertain, return null for field and lower confidence.
 - No markdown, no extra text.`
 
@@ -106,7 +109,7 @@ Rules:
         { inlineData: { data: buffer.toString('base64'), mimeType } },
         prompt,
       ]),
-      3000
+      8000
     )
 
     const parsed = parseJsonPayload(response.response.text() || '{}')
