@@ -254,6 +254,14 @@ function SubmitClaimForm() {
         setPreview(null)
     }
     setFile(processedFile)
+    if (!resubmitId) {
+      // Prevent stale override values from previous submissions from leaking into new claims.
+      setManualMerchant('')
+      setManualAmount('')
+      setManualCategory('')
+      setManualCurrency('INR')
+      setManualDate('')
+    }
     if (!purpose.trim() && precheckSuggestedPurpose.trim()) {
       setPurpose(precheckSuggestedPurpose.trim())
       toast.info('Business purpose auto-filled from your pre-check conversation.')
@@ -412,6 +420,9 @@ function SubmitClaimForm() {
     setQualityWarning(null)
     setProgressStep(0)
     setInrEquivalent(null)
+    setManualMerchant('')
+    setManualAmount('')
+    setManualCategory('')
     setManualCurrency('INR')
     setManualDate('')
     setQuickExtracted(null)
