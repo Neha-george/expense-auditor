@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { Activity, AlertTriangle, CheckCircle, DollarSign } from 'lucide-react'
+import AnomalyHeatmap from '@/components/AnomalyHeatmap'
 
 export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true)
@@ -204,6 +205,8 @@ export default function AdminDashboardPage() {
         </div>
 
       </div>
+
+      <AnomalyHeatmap />
     </div>
   )
 }
