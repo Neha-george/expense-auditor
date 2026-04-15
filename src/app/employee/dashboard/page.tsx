@@ -215,6 +215,9 @@ export default function EmployeeDashboard() {
               const fmt = (v: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: p.currency, maximumFractionDigits: 0 }).format(v)
               const willExceed = p.projected > p.limit
               const noSpend = p.spent === 0
+              const remainingNow = Math.max(0, p.limit - p.spent)
+              const currentlyOver = Math.max(0, p.spent - p.limit)
+              const projectedAdditional = Math.max(0, p.projected - p.spent)
               return (
                 <div key={p.name} className={`rounded-lg border p-4 ${
                   noSpend ? 'border-zinc-200 dark:border-zinc-700'
@@ -240,6 +243,10 @@ export default function EmployeeDashboard() {
                   </p>
                   <p className="text-xs text-zinc-500 mt-1">projected vs {fmt(p.limit)} limit</p>
                   <p className="text-xs text-zinc-500 mt-1">current spent: {fmt(p.spent)}</p>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    {currentlyOver > 0 ? `currently over by ${fmt(currentlyOver)}` : `remaining now: ${fmt(remainingNow)}`}
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-1">projected additional spend this month: {fmt(projectedAdditional)}</p>
                   {!noSpend && willExceed && (
                     <p className="text-xs font-medium text-red-600 dark:text-red-400 mt-1.5">⚠ Will exceed by {fmt(p.projected - p.limit)}</p>
                   )}
