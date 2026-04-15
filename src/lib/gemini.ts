@@ -31,6 +31,47 @@ function errorText(err: unknown): string {
   }
 }
 
+function parseModelJson(text: string): any {
+  const cleaned = text.trim().replace(/^```json\n?/, '').replace(/\n?```$/, '')
+
+  try {
+    return JSON.parse(cleaned)
+  } catch {
+    const start = cleaned.indexOf('{')
+    const end = cleaned.lastIndexOf('}')
+    if (start >= 0 && end > start) {
+      return JSON.parse(cleaned.slice(start, end + 1))
+    }
+    throw new Error('Model did not return parseable JSON')
+  }
+}
+
+function parseNumericAmount(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && value > 0 ? Number(value) : null
+  }
+
+  if (typeof value !== 'string') return null
+
+  const cleaned = value
+    .replace(/\b(inr|rs\.?|usd|eur|gbp)\b/gi, '')
+    .replace(/[₹$€£,\s]/g, '')
+    .trim()
+
+  if (!cleaned) return null
+
+  const n = Number(cleaned)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+function normalizeReceiptPayload(parsed: any) {
+  const amount = parseNumericAmount(parsed?.amount)
+  return {
+    ...parsed,
+    amount,
+  }
+}
+
 function isQuotaOrRateLimitError(err: unknown): boolean {
   const lower = errorText(err).toLowerCase()
   return lower.includes('429') || lower.includes('too many requests') || lower.includes('quota') || lower.includes('rate limit')
@@ -157,16 +198,8 @@ Return ONLY the JSON. No explanation, no markdown, no code blocks.`
     prompt,
   ])
 
-  const text = result.response.text().trim()
-    .replace(/^```json\n?/, '').replace(/\n?```$/, '')
-
-  const parsed = JSON.parse(text)
-  // Sanitize amount: if it's a string, try to extract numeric value
-  if (parsed.amount && typeof parsed.amount === 'string') {
-    const numMatch = parsed.amount.toString().replace(/[^0-9.]/g, '')
-    parsed.amount = numMatch ? parseFloat(numMatch) : null
-  }
-  return parsed
+  const parsed = parseModelJson(result.response.text() || '{}')
+  return normalizeReceiptPayload(parsed)
 }
 
 // Fallback parser for images where primary OCR parser returns weak/missing fields.
@@ -197,16 +230,8 @@ Rules:
     prompt,
   ])
 
-  const text = result.response.text().trim()
-    .replace(/^```json\n?/, '').replace(/\n?```$/, '')
-
-  const parsed = JSON.parse(text)
-  // Sanitize amount: if it's a string, try to extract numeric value
-  if (parsed.amount && typeof parsed.amount === 'string') {
-    const numMatch = parsed.amount.toString().replace(/[^0-9.]/g, '')
-    parsed.amount = numMatch ? parseFloat(numMatch) : null
-  }
-  return parsed
+  const parsed = parseModelJson(result.response.text() || '{}')
+  return normalizeReceiptPayload(parsed)
 }
 
 // Text parser: extract structured receipt fields from OCR/PDF text.
@@ -238,16 +263,28 @@ RECEIPT TEXT:
 ${receiptText.slice(0, 20000)}`
 
   const result = await generateContentWithBackoff(prompt)
-  const text = result.response.text().trim()
-    .replace(/^```json\n?/, '').replace(/\n?```$/, '')
+  const parsed = parseModelJson(result.response.text() || '{}')
+  return normalizeReceiptPayload(parsed)
+}
 
-  const parsed = JSON.parse(text)
-  // Sanitize amount: if it's a string, try to extract numeric value
-  if (parsed.amount && typeof parsed.amount === 'string') {
-    const numMatch = parsed.amount.toString().replace(/[^0-9.]/g, '')
-    parsed.amount = numMatch ? parseFloat(numMatch) : null
-  }
-  return parsed
+// Focused rescue extractor: used when full receipt extraction misses amount.
+export async function extractReceiptAmountOnly(imageBase64: string, mimeType: string): Promise<number | null> {
+  const prompt = `Extract only the FINAL paid amount from this receipt image.
+Return ONLY JSON: {"amount": number or null}
+
+Rules:
+- Prefer lines: TOTAL, Grand Total, Amount Due, Payable.
+- Strip currency symbols and separators (e.g., ₹41,500.00 -> 41500).
+- If uncertain, return null.
+- No markdown, no extra text.`
+
+  const result = await generateContentWithBackoff([
+    { inlineData: { data: imageBase64, mimeType } },
+    prompt,
+  ])
+
+  const parsed = parseModelJson(result.response.text() || '{}')
+  return parseNumericAmount(parsed?.amount)
 }
 
 type LocalReceipt = {
