@@ -51,7 +51,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     // Listen for the SW telling us to flush the offline queue
     const handler = (event: MessageEvent) => {
       if (event.data?.type === 'FLUSH_OFFLINE_QUEUE') {
-        window.dispatchEvent(new CustomEvent('policylens:flush-offline-queue'))
+        window.dispatchEvent(new CustomEvent('flushOfflineQueue'))
       }
     }
     navigator.serviceWorker.addEventListener('message', handler)

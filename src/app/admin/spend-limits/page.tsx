@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
-import { getOrgId } from '@/lib/supabase-server' // Ensure we don't import this in client
 import { toast } from 'sonner'
 import { Loader2, Save } from 'lucide-react'
 

@@ -163,13 +163,17 @@ function SubmitClaimForm() {
       else localStorage.removeItem('policylens-offline-queue')
     }
 
+    const handleFlushOfflineQueue = () => {
+      void flushQueue()
+    }
+
     window.addEventListener('online', flushQueue)
-    window.addEventListener('policylens:flush-offline-queue', flushQueue as any)
+    window.addEventListener('flushOfflineQueue', handleFlushOfflineQueue)
     return () => {
       window.removeEventListener('online', onOnline)
       window.removeEventListener('offline', onOffline)
       window.removeEventListener('online', flushQueue)
-      window.removeEventListener('policylens:flush-offline-queue', flushQueue as any)
+      window.removeEventListener('flushOfflineQueue', handleFlushOfflineQueue)
     }
   }, [])
 
