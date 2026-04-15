@@ -35,6 +35,32 @@ graph TD
 
 ## Key Data Flows
 
+### 0. Monthly Narrative Report Flow (Admin)
+This flow converts monthly expense telemetry into a board-ready narrative in one click.
+
+```mermaid
+sequenceDiagram
+    participant Admin as Admin
+    participant UI as GenerateNarrativeButton
+    participant API as /api/admin/narrative-report
+    participant DB as Supabase DB
+    participant Gemini as Gemini AI
+
+    Admin->>UI: Click Generate Narrative Report
+    UI->>UI: Check localStorage cache (org_id + month, TTL 1 hour)
+    alt Cache hit
+        UI-->>Admin: Open modal with cached narrative
+    else Cache miss
+        UI->>API: POST request
+        API->>DB: Aggregate monthly spend, violations, policy gaps, trend rates
+        API->>Gemini: Prompt with structured reporting payload
+        Gemini-->>API: 3-paragraph executive narrative
+        API-->>UI: Narrative + month + org metadata
+        UI->>UI: Cache response for 1 hour
+        UI-->>Admin: Modal with Copy and Download .docx actions
+    end
+```
+
 ### 1. Multi-Tenant Authentication Flow
 ```mermaid
 sequenceDiagram

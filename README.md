@@ -70,6 +70,10 @@ Benefit: controlled human-in-the-loop governance.
 Approved claims can be exported in QuickBooks IIF, Xero CSV, and BACS-style CSV.
 Benefit: reduced manual accounting handoff effort.
 
+### 9. AI-Generated Monthly Expense Narrative
+Admins can generate a board-ready 3-paragraph narrative (Overview, Risk Signals, Recommendations) from live monthly data.
+Benefit: faster executive reporting with consistent, policy-grounded language.
+
 ---
 
 ## System Architecture
@@ -109,6 +113,7 @@ Key architectural points:
 7. Claim is stored with confidence/review metadata and duplicate warning signals.
 8. Notifications are sent to employee/admin based on claim state.
 9. Admin can review, override, and export approved claims.
+10. Admin can generate a monthly narrative report for board reporting and download it as DOCX.
 
 ---
 
@@ -254,6 +259,7 @@ Authentication for these endpoints relies on Supabase session cookies.
 | Method | Endpoint | Description |
 |---|---|---|
 | POST | /api/assistant/chat | Policy Q and A using org-scoped RAG context |
+| POST | /api/admin/narrative-report | Generate monthly executive narrative from spend, violations, policy gaps, and approval trends |
 | GET | /api/admin/gl-mappings | List GL mappings for current admin org |
 | POST | /api/admin/gl-mappings | Upsert GL mapping for category |
 | GET | /api/employee/budget | Category budget and current month spend snapshot |

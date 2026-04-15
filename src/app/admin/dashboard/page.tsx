@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { Activity, AlertTriangle, CheckCircle, DollarSign } from 'lucide-react'
 import AnomalyHeatmap from '@/components/AnomalyHeatmap'
+import GenerateNarrativeButton from '@/components/GenerateNarrativeButton'
 
 export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true)
@@ -116,9 +117,12 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-zinc-950 dark:text-zinc-50">Dashboard</h1>
-        <p className="text-zinc-500 dark:text-zinc-400">Overview of expenses and AI compliance (Last 30 Days).</p>
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-zinc-950 dark:text-zinc-50">Dashboard</h1>
+          <p className="text-zinc-500 dark:text-zinc-400">Overview of expenses and AI compliance (Last 30 Days).</p>
+        </div>
+        <GenerateNarrativeButton />
       </div>
 
       {/* KPIs */}
