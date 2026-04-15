@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminSupabase, createServerSupabase } from '@/lib/supabase-server'
-import { extractReceiptData, extractReceiptDataBestEffort, extractReceiptDataFromText, extractReceiptDataLocally, generateVerdict, embedText } from '@/lib/gemini'
+import { extractReceiptData, extractReceiptDataBestEffort, extractReceiptDataFromText, extractReceiptDataLocally, extractReceiptAmountOnly, generateVerdict, embedText } from '@/lib/gemini'
 import { sendEmail, resubmissionTemplate, verdictTemplate, submissionConfirmationTemplate, adminFlaggedAlertTemplate } from '@/lib/email'
 
 export const maxDuration = 60
@@ -313,8 +313,31 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const extractedAmount = Number(extracted?.amount)
-    const hasValidAmount = Number.isFinite(extractedAmount) && extractedAmount > 0
+    let extractedAmount = Number(extracted?.amount)
+    let hasValidAmount = Number.isFinite(extractedAmount) && extractedAmount > 0
+
+    // Amount rescue pass: run a focused extractor before falling back to 0.
+    if (!hasValidAmount && !manualAmount) {
+      try {
+        const rescuedAmount = await withTimeout(
+          extractReceiptAmountOnly(imageBase64, actualType),
+          12000,
+          'Receipt amount rescue extraction'
+        )
+        if (Number.isFinite(Number(rescuedAmount)) && Number(rescuedAmount) > 0) {
+          extractedAmount = Number(rescuedAmount)
+          hasValidAmount = true
+          extracted = {
+            ...extracted,
+            amount: extractedAmount,
+            confidence: extracted?.confidence === 'low' ? 'medium' : extracted?.confidence,
+          }
+          console.log('[Receipt Analysis] Amount rescued via focused extraction:', extractedAmount)
+        }
+      } catch (amountRescueErr: any) {
+        console.warn('[Receipt Analysis] Amount rescue failed:', amountRescueErr?.message || String(amountRescueErr))
+      }
+    }
     
     // Log extraction details for debugging
     if (!hasValidAmount && !manualAmount) {
@@ -336,6 +359,26 @@ export async function POST(request: NextRequest) {
       currency: (manualCurrency && manualCurrency.trim().toUpperCase()) || extracted?.currency || 'INR',
       date: (manualDate && manualDate.trim()) || extracted?.date || new Date().toISOString().split('T')[0],
       category: (manualCategory && manualCategory.trim()) || extracted?.category || 'other',
+    }
+
+    // Permanent guardrail: do not store invalid zero amounts unless user explicitly overrides.
+    if (!manualAmount && (!Number.isFinite(Number(extracted.amount)) || Number(extracted.amount) <= 0)) {
+      return NextResponse.json(
+        {
+          success: false,
+          requires_manual_review: true,
+          message: 'Could not reliably extract receipt amount. Please enter amount manually and resubmit.',
+          extracted_preview: {
+            merchant: extracted.merchant,
+            amount: extracted.amount,
+            currency: extracted.currency,
+            date: extracted.date,
+            category: extracted.category,
+            confidence: extracted.confidence,
+          },
+        },
+        { status: 422 }
+      )
     }
 
     const { fieldConfidence, fieldSource } = buildFieldConfidence({

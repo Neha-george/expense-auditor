@@ -28,6 +28,15 @@ function sanitizeDate(value: unknown): string | null {
 }
 
 function sanitizeAmount(value: unknown): number | null {
+  if (typeof value === 'string') {
+    const cleaned = value
+      .replace(/\b(inr|rs\.?|usd|eur|gbp)\b/gi, '')
+      .replace(/[₹$€£,\s]/g, '')
+      .trim()
+    const n = Number(cleaned)
+    return Number.isFinite(n) && n > 0 ? Number(n.toFixed(2)) : null
+  }
+
   const n = Number(value)
   return Number.isFinite(n) && n > 0 ? Number(n.toFixed(2)) : null
 }
@@ -40,7 +49,16 @@ function normalizeConfidence(value: unknown): number {
 
 function parseJsonPayload(text: string): any {
   const cleaned = text.trim().replace(/^```json\n?/, '').replace(/\n?```$/, '')
-  return JSON.parse(cleaned)
+  try {
+    return JSON.parse(cleaned)
+  } catch {
+    const start = cleaned.indexOf('{')
+    const end = cleaned.lastIndexOf('}')
+    if (start >= 0 && end > start) {
+      return JSON.parse(cleaned.slice(start, end + 1))
+    }
+    throw new Error('Model did not return parseable JSON')
+  }
 }
 
 async function runWithTimeout<T>(task: Promise<T>, ms: number): Promise<T> {
