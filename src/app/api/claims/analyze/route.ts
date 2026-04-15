@@ -624,19 +624,33 @@ export async function POST(request: NextRequest) {
     if (precheckQueriesRaw) {
       try {
         const precheckQueries = JSON.parse(precheckQueriesRaw)
-        await admin.from('audit_logs').insert({
+        const basePayload = {
           organisation_id: orgId,
           actor_id: user.id,
           action: 'precheck_converted_submission',
           entity_type: 'claim',
           entity_id: claim.id,
-          precheck_queries: precheckQueries,
           metadata: {
             converted: true,
             summary: String(precheckQueries?.summary || ''),
             message_count: Array.isArray(precheckQueries?.messages) ? precheckQueries.messages.length : 0,
+            // Backward-compatible fallback when precheck_queries column is absent in live DB.
+            precheck_queries_fallback: precheckQueries,
           },
+        }
+
+        const { error: precheckInsertErr } = await admin.from('audit_logs').insert({
+          ...basePayload,
+          precheck_queries: precheckQueries,
         })
+
+        if (precheckInsertErr) {
+          const missingColumn = String(precheckInsertErr.message || '').toLowerCase().includes('precheck_queries')
+          if (!missingColumn) throw precheckInsertErr
+
+          const { error: fallbackInsertErr } = await admin.from('audit_logs').insert(basePayload)
+          if (fallbackInsertErr) throw fallbackInsertErr
+        }
       } catch (precheckLogErr: any) {
         console.warn('precheck conversion audit log failed:', precheckLogErr?.message)
       }
